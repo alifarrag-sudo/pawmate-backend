@@ -57,6 +57,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      // TEMP DEBUG: expose raw error so we can diagnose Railway DB issues
+      details = { debugError: exception.message, debugType: exception.constructor.name };
     }
 
     // Log server errors (don't log 4xx in production)
