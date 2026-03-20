@@ -12,9 +12,9 @@ RUN npm ci
 # Generate Prisma client
 RUN npx prisma generate
 
-# Copy source and build
+# Copy source and build (remove stale incremental build cache first)
 COPY . .
-RUN npm run build
+RUN rm -f tsconfig.tsbuildinfo && npm run build && ls dist/main.js
 
 EXPOSE 3000
 
