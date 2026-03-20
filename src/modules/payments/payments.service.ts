@@ -4,8 +4,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymobService } from './paymob.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -18,7 +16,6 @@ export class PaymentsService {
     private prisma: PrismaService,
     private paymob: PaymobService,
     private notifications: NotificationsService,
-    @InjectQueue('payment-processor') private paymentQueue: Queue,
   ) {}
 
   // ============================================================
@@ -169,11 +166,7 @@ export class PaymentsService {
       });
 
       // Schedule sitter payout in 24 hours
-      await this.paymentQueue.add(
-        'payout-sitter',
-        { bookingId },
-        { delay: 24 * 60 * 60 * 1000, attempts: 3 },
-      );
+      // TODO: schedule sitter payout (requires Redis/Bull)
 
       this.logger.log(`Payment captured for booking ${bookingId}`);
     } catch (error: any) {
