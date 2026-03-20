@@ -22,10 +22,10 @@ async function main() {
   // ============================================================
   const adminHash = await bcrypt.hash('Admin@123!', 12);
   const admin = await prisma.user.upsert({
-    where: { phone: '+20100000000' },
+    where: { phone: '+201000000000' },
     update: {},
     create: {
-      phone: '+20100000000',
+      phone: '+201000000000',
       email: 'admin@pawmate.eg',
       passwordHash: adminHash,
       firstName: 'Admin',
@@ -67,12 +67,12 @@ async function main() {
   // Owner 2 - Fatima Ahmed (dual role)
   const fatimaHash = await bcrypt.hash('Owner1234!', 12);
   const fatima = await prisma.user.upsert({
-    where: { phone: '+20101234567' },
+    where: { phone: '+201012345678' },
     update: {
       walletBalance: 750.00,
     },
     create: {
-      phone: '+20101234567',
+      phone: '+201012345678',
       passwordHash: fatimaHash,
       firstName: 'Fatima',
       lastName: 'Ahmed',
@@ -88,13 +88,13 @@ async function main() {
   // Sitter 1 - Sara Mohamed (dog walking, drop-in)
   const saraHash = await bcrypt.hash('Sitter1234!', 12);
   const sara = await prisma.user.upsert({
-    where: { phone: '+20107654321' },
+    where: { phone: '+201076543210' },
     update: {
       walletBalance: 1200.00,
       idVerified: true,
     },
     create: {
-      phone: '+20107654321',
+      phone: '+201076543210',
       passwordHash: saraHash,
       firstName: 'Sara',
       lastName: 'Mohamed',
@@ -111,13 +111,13 @@ async function main() {
   // Sitter 2 - Omar Khalil (boarding, house sitting)
   const omarHash = await bcrypt.hash('Sitter1234!', 12);
   const omar = await prisma.user.upsert({
-    where: { phone: '+20111223344' },
+    where: { phone: '+201112233440' },
     update: {
       walletBalance: 800.00,
       idVerified: true,
     },
     create: {
-      phone: '+20111223344',
+      phone: '+201112233440',
       passwordHash: omarHash,
       firstName: 'Omar',
       lastName: 'Khalil',
@@ -134,13 +134,13 @@ async function main() {
   // Sitter 3 - Nour Hassan (daycare)
   const nourHash = await bcrypt.hash('Sitter1234!', 12);
   const nour = await prisma.user.upsert({
-    where: { phone: '+20122334455' },
+    where: { phone: '+201223344550' },
     update: {
       walletBalance: 950.00,
       idVerified: true,
     },
     create: {
-      phone: '+20122334455',
+      phone: '+201223344550',
       passwordHash: nourHash,
       firstName: 'Nour',
       lastName: 'Hassan',
@@ -790,16 +790,16 @@ async function main() {
   console.log('============================================================');
   console.log('');
   console.log('=== User Credentials ===');
-  console.log('Admin:    +20100000000   / Admin@123!');
+  console.log('Admin:    +201000000000  / Admin@123!');
   console.log('');
   console.log('--- Owners ---');
   console.log('Ali Farrag (main):  +201099999999  / Test1234!   wallet: 500 EGP');
-  console.log('Fatima Ahmed:       +20101234567   / Owner1234!  wallet: 750 EGP');
+  console.log('Fatima Ahmed:       +201012345678  / Owner1234!  wallet: 750 EGP');
   console.log('');
   console.log('--- Sitters ---');
-  console.log('Sara Mohamed:  +20107654321  / Sitter1234!  wallet: 1200 EGP  (dog walking, drop-in)');
-  console.log('Omar Khalil:   +20111223344  / Sitter1234!  wallet: 800 EGP   (boarding, house sitting)');
-  console.log('Nour Hassan:   +20122334455  / Sitter1234!  wallet: 950 EGP   (daycare)');
+  console.log('Sara Mohamed:  +201076543210  / Sitter1234!  wallet: 1200 EGP  (dog walking, drop-in)');
+  console.log('Omar Khalil:   +201112233440  / Sitter1234!  wallet: 800 EGP   (boarding, house sitting)');
+  console.log('Nour Hassan:   +201223344550  / Sitter1234!  wallet: 950 EGP   (daycare)');
   console.log('');
   console.log('=== Pets ===');
   console.log('Max  (Ali)    - Golden Retriever, 3yo, 28.5kg');
