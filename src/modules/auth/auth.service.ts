@@ -156,7 +156,7 @@ export class AuthService {
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
     // Find user by phone
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.user.findFirst({
       where: { phone: dto.phone, deletedAt: null },
     });
 

@@ -57,7 +57,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     } else if (exception instanceof Error) {
       this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
-      message = exception.message;
     }
 
     // Log server errors (don't log 4xx in production)
