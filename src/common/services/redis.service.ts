@@ -6,6 +6,7 @@ import Redis from 'ioredis';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: Redis;
+  private connected = false;
 
   constructor(private config: ConfigService) {}
 
@@ -13,75 +14,82 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const redisUrl = this.config.get('REDIS_URL');
     const tls = this.config.get('REDIS_TLS') === 'true';
 
-    const options: any = redisUrl
-      ? { lazyConnect: true, retryStrategy: (times) => Math.min(times * 100, 3000), maxRetriesPerRequest: 3 }
-      : {
-          host: this.config.get('REDIS_HOST', 'localhost'),
-          port: this.config.get<number>('REDIS_PORT', 6379),
-          password: this.config.get('REDIS_PASSWORD'),
-          tls: tls ? {} : undefined,
-          lazyConnect: true,
-          retryStrategy: (times) => Math.min(times * 100, 3000),
-          maxRetriesPerRequest: 3,
-        };
+    const options: any = {
+      lazyConnect: true,
+      retryStrategy: () => null, // don't retry — fail fast
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+    };
+
+    if (!redisUrl) {
+      options.host = this.config.get('REDIS_HOST', 'localhost');
+      options.port = this.config.get<number>('REDIS_PORT', 6379);
+      options.password = this.config.get('REDIS_PASSWORD');
+      if (tls) options.tls = {};
+    }
 
     this.client = redisUrl ? new Redis(redisUrl, options) : new Redis(options);
-
-    this.client.on('connect', () => this.logger.log('Redis connected'));
-    this.client.on('error', (err) => this.logger.error(`Redis error: ${err.message}`));
+    this.client.on('connect', () => { this.connected = true; this.logger.log('Redis connected'); });
+    this.client.on('error', () => { this.connected = false; });
 
     try {
       await this.client.connect();
-    } catch (err) {
-      this.logger.warn('Redis connection failed, continuing without Redis');
+      this.connected = true;
+    } catch {
+      this.logger.warn('Redis unavailable — caching/OTP features disabled');
     }
   }
 
   async onModuleDestroy() {
-    await this.client.quit();
+    try { await this.client.quit(); } catch {}
+  }
+
+  private safe<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
+    if (!this.connected) return Promise.resolve(fallback);
+    return fn().catch(() => fallback);
   }
 
   async get(key: string): Promise<string | null> {
-    return this.client.get(key);
+    return this.safe(() => this.client.get(key), null);
   }
 
   async set(key: string, value: string, mode?: string, ttl?: number): Promise<string | null> {
-    if (mode === 'NX' && ttl) {
-      return this.client.set(key, value, 'EX', ttl, 'NX');
-    }
-    return this.client.set(key, value);
+    return this.safe(() => {
+      if (mode === 'NX' && ttl) return this.client.set(key, value, 'EX', ttl, 'NX');
+      return this.client.set(key, value);
+    }, null);
   }
 
   async setex(key: string, ttl: number, value: string): Promise<string> {
-    return this.client.setex(key, ttl, value);
+    return this.safe(() => this.client.setex(key, ttl, value), 'OK');
   }
 
   async del(key: string): Promise<number> {
-    return this.client.del(key);
+    return this.safe(() => this.client.del(key), 0);
   }
 
   async incr(key: string): Promise<number> {
-    return this.client.incr(key);
+    return this.safe(() => this.client.incr(key), 0);
   }
 
   async expire(key: string, ttl: number): Promise<number> {
-    return this.client.expire(key, ttl);
+    return this.safe(() => this.client.expire(key, ttl), 0);
   }
 
   async hset(key: string, data: Record<string, string>): Promise<number> {
-    return this.client.hset(key, data);
+    return this.safe(() => this.client.hset(key, data), 0);
   }
 
   async hgetall(key: string): Promise<Record<string, string> | null> {
-    return this.client.hgetall(key);
+    return this.safe(() => this.client.hgetall(key), null);
   }
 
   async zadd(key: string, score: number, member: string): Promise<number> {
-    return this.client.zadd(key, score, member);
+    return this.safe(() => this.client.zadd(key, score, member), 0);
   }
 
   async zrevrange(key: string, start: number, stop: number): Promise<string[]> {
-    return this.client.zrevrange(key, start, stop);
+    return this.safe(() => this.client.zrevrange(key, start, stop), []);
   }
 
   async pipeline() {
