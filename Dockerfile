@@ -19,4 +19,4 @@ RUN npm run build
 EXPOSE 3000
 
 # Run migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+CMD ["node", "dist/main"]
