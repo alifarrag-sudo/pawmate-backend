@@ -42,20 +42,26 @@ import { PrismaModule } from './prisma/prisma.module';
     // Redis-based job queues
     BullModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        redis: {
-          host: configService.get('REDIS_HOST', 'localhost'),
-          port: configService.get<number>('REDIS_PORT', 6379),
-          password: configService.get('REDIS_PASSWORD'),
-          tls: configService.get('REDIS_TLS') === 'true' ? {} : undefined,
-        },
-        defaultJobOptions: {
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 1000 },
-          removeOnComplete: 100,
-          removeOnFail: 500,
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const redisUrl = configService.get('REDIS_URL');
+        const redisConfig = redisUrl
+          ? { url: redisUrl }
+          : {
+              host: configService.get('REDIS_HOST', 'localhost'),
+              port: configService.get<number>('REDIS_PORT', 6379),
+              password: configService.get('REDIS_PASSWORD'),
+              tls: configService.get('REDIS_TLS') === 'true' ? {} : undefined,
+            };
+        return {
+          redis: redisConfig,
+          defaultJobOptions: {
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 1000 },
+            removeOnComplete: 100,
+            removeOnFail: 500,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
 

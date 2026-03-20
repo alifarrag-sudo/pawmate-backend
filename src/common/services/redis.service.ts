@@ -10,18 +10,31 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   constructor(private config: ConfigService) {}
 
   async onModuleInit() {
+    const redisUrl = this.config.get('REDIS_URL');
     const tls = this.config.get('REDIS_TLS') === 'true';
-    this.client = new Redis({
-      host: this.config.get('REDIS_HOST', 'localhost'),
-      port: this.config.get<number>('REDIS_PORT', 6379),
-      password: this.config.get('REDIS_PASSWORD'),
-      tls: tls ? {} : undefined,
-      retryStrategy: (times) => Math.min(times * 100, 3000),
-      maxRetriesPerRequest: 3,
-    });
+
+    const options: any = redisUrl
+      ? { lazyConnect: true, retryStrategy: (times) => Math.min(times * 100, 3000), maxRetriesPerRequest: 3 }
+      : {
+          host: this.config.get('REDIS_HOST', 'localhost'),
+          port: this.config.get<number>('REDIS_PORT', 6379),
+          password: this.config.get('REDIS_PASSWORD'),
+          tls: tls ? {} : undefined,
+          lazyConnect: true,
+          retryStrategy: (times) => Math.min(times * 100, 3000),
+          maxRetriesPerRequest: 3,
+        };
+
+    this.client = redisUrl ? new Redis(redisUrl, options) : new Redis(options);
 
     this.client.on('connect', () => this.logger.log('Redis connected'));
     this.client.on('error', (err) => this.logger.error(`Redis error: ${err.message}`));
+
+    try {
+      await this.client.connect();
+    } catch (err) {
+      this.logger.warn('Redis connection failed, continuing without Redis');
+    }
   }
 
   async onModuleDestroy() {
