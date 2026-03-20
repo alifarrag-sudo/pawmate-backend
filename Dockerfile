@@ -37,15 +37,11 @@ RUN npx prisma generate
 # Copy built application
 COPY --from=builder /app/dist ./dist
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S nodejs && adduser -S nestjs -u 1001
-USER nestjs
-
 EXPOSE 3000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"
 
-# Run database migrations then start
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
+# Run database migrations then start (use local prisma binary, not npx)
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main"]
