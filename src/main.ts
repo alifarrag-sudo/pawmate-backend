@@ -93,7 +93,7 @@ async function bootstrap() {
   // Simple health endpoint (before global prefix so it's at /health)
   const httpAdapter = app.getHttpAdapter();
   httpAdapter.get('/api/health', (_req: any, res: any) => {
-    res.status(200).json({ status: 'ok', version: 'v11-debug3', timestamp: new Date().toISOString() });
+    res.status(200).json({ status: 'ok', version: 'v12-bullseye', timestamp: new Date().toISOString() });
   });
 
   const port = process.env.PORT || 3000;
