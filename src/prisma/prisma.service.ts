@@ -16,19 +16,12 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async onModuleInit() {
-    await this.$connect();
-    this.logger.log('PostgreSQL connected via Prisma');
-
-    // Auto-migrate on startup in production
-    if (process.env.NODE_ENV === 'production') {
-      try {
-        await this.$executeRawUnsafe('SELECT 1');
-        const { execSync } = require('child_process');
-        execSync('npx prisma migrate deploy', { stdio: 'inherit' });
-        this.logger.log('Database migrations applied');
-      } catch (e) {
-        this.logger.warn(`Migration warning: ${e.message}`);
-      }
+    try {
+      await this.$connect();
+      this.logger.log('PostgreSQL connected via Prisma');
+    } catch (e) {
+      this.logger.error(`Database connection failed: ${e.message}`);
+      this.logger.warn('App will start but DB operations will fail — check DATABASE_URL');
     }
 
     // Log slow queries in development
