@@ -54,6 +54,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = 'The requested record was not found';
       } else {
         this.logger.error(`Prisma error ${exception.code}: ${exception.message}`);
+        errorCode = `PRISMA_${exception.code}`;
+        message = exception.message.split('\n').slice(0, 2).join(' ').trim();
+        details = { prismaCode: exception.code, meta: exception.meta };
       }
     } else if (exception instanceof Error) {
       this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
