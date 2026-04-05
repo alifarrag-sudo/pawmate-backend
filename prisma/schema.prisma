@@ -74,6 +74,45 @@ enum ScheduleType {
   other
 }
 
+enum AgeCategory {
+  puppy    // 0-1 yr
+  young    // 1-3 yr
+  adult    // 3-7 yr
+  senior   // 7+ yr
+}
+
+enum NeuteredStatus {
+  yes
+  no
+  unknown
+}
+
+enum HouseTrainedStatus {
+  yes
+  no
+  working_on_it
+}
+
+enum EnergyLevel {
+  low
+  medium
+  high
+  very_high
+}
+
+enum MedicationType {
+  pill
+  topical
+  injection
+  other
+}
+
+enum CareActionType {
+  walk
+  meal
+  medication
+}
+
 enum BehaviorCompatibility {
   yes
   no
@@ -352,6 +391,7 @@ model User {
   loyaltyTransactions LoyaltyTransaction[]
   adminActions      AdminAction[]  @relation("AdminActor")
   cancelledBookings Booking[]      @relation("CancelledBy")
+  completedCareLogs CareLog[]      @relation("CareLogCompleter")
 
   @@index([phone])
   @@index([email])
@@ -531,6 +571,10 @@ model Pet {
   name          String
   species       Species
   breed         String?
+  nickname      String?
+  ageCategory   AgeCategory?
+  neuteredStatus NeuteredStatus @default(unknown)
+  houseTrained  HouseTrainedStatus @default(yes)
   color         String?
   dateOfBirth   DateTime?      @db.Date
   weightKg      Decimal?       @db.Decimal(5, 2)
@@ -553,6 +597,7 @@ model Pet {
   bookingPets   BookingPet[]
   petReviews    PetReview[]
   bookingTasks  BookingTask[]
+  careLogs      CareLog[]
 
   @@index([ownerId])
   @@map("pets")
@@ -599,11 +644,12 @@ model PetMedication {
   id          String               @id @default(uuid())
   petId       String
   pet         Pet                  @relation(fields: [petId], references: [id], onDelete: Cascade)
-  name        String
-  dosage      String?
-  unit        String?
-  frequency   MedicationFrequency
-  adminTimes  String[]             // ["08:00", "20:00"]
+  name            String
+  medicationType  MedicationType      @default(pill)
+  dosage          String?
+  unit            String?
+  frequency       MedicationFrequency
+  adminTimes      String[]             // ["08:00", "20:00"]
   startDate   DateTime?            @db.Date
   endDate     DateTime?            @db.Date
   notes       String?
@@ -623,6 +669,7 @@ model PetBehavior {
   goodWithCats     BehaviorCompatibility @default(yes)
   goodWithKids     BehaviorCompatibility @default(yes)
   trainingLevel    TrainingLevel         @default(none)
+  energyLevel      EnergyLevel           @default(medium)
   behaviorNotes    String?
   fearTriggers     String[]
   updatedAt        DateTime              @updatedAt
@@ -637,12 +684,33 @@ model PetSchedule {
   scheduleType    ScheduleType
   scheduledTime   String       // "08:00" (time of day)
   durationMinutes Int?
+  foodType        String?
+  foodAmount      String?
   notes           String?
   isActive        Boolean      @default(true)
   createdAt       DateTime     @default(now())
 
   @@index([petId, isActive])
   @@map("pet_schedules")
+}
+
+model CareLog {
+  id            String         @id @default(uuid())
+  bookingId     String
+  booking       Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  petId         String
+  pet           Pet            @relation(fields: [petId], references: [id])
+  actionType    CareActionType
+  scheduledTime DateTime
+  completedAt   DateTime?
+  completedById String?
+  completedBy   User?          @relation("CareLogCompleter", fields: [completedById], references: [id])
+  notes         String?
+  createdAt     DateTime       @default(now())
+
+  @@index([bookingId])
+  @@index([petId])
+  @@map("care_logs")
 }
 
 // ============================================================
@@ -725,6 +793,7 @@ model Booking {
   reviews           Review[]
   transactions      PaymentTransaction[]
   payouts           SitterPayout[]
+  careLogs          CareLog[]
 
   @@index([ownerId, status, createdAt(sort: Desc)])
   @@index([sitterId, status, createdAt(sort: Desc)])

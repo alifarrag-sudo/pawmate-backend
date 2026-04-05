@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Post, Patch, Delete, Param, Body, Request,
+  Controller, Get, Post, Put, Patch, Delete, Param, Body, Request,
   UseInterceptors, UploadedFiles, BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -19,6 +19,21 @@ export class PetsController {
   @Get()
   getMyPets(@Request() req: any) {
     return this.petsService.findByOwner(req.user?.id);
+  }
+
+  @Get(':id')
+  getOne(@Request() req: any, @Param('id') id: string) {
+    return this.petsService.findOne(req.user?.id, id);
+  }
+
+  @Post('wizard')
+  createWizard(@Request() req: any, @Body() body: any) {
+    return this.petsService.upsertFullProfile(req.user?.id, null, body);
+  }
+
+  @Put(':id/wizard')
+  updateWizard(@Request() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.petsService.upsertFullProfile(req.user?.id, id, body);
   }
 
   @Post()

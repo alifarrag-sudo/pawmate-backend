@@ -19,6 +19,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { CareLogModule } from './modules/care-log/care-log.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { PrismaModule } from './prisma/prisma.module';
     SocialModule,
     AdminModule,
     SchedulerModule,
+    CareLogModule,
   ],
 })
 export class AppModule {}

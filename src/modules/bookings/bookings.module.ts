@@ -5,11 +5,13 @@ import { MatchingService } from './matching.service';
 import { PricingService } from './pricing.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RedisModule } from '../../common/redis.module';
+import { CareLogModule } from '../care-log/care-log.module';
 
 @Module({
   imports: [
     PrismaModule,
     RedisModule,
+    CareLogModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService, MatchingService, PricingService],

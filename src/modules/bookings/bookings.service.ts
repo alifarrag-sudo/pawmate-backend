@@ -13,6 +13,7 @@ import { RedisService } from '../../common/services/redis.service';
 import { MatchingService } from './matching.service';
 import { PricingService } from './pricing.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { CareLogService } from '../care-log/care-log.service';
 
 @Injectable()
 export class BookingsService {
@@ -24,6 +25,7 @@ export class BookingsService {
     private matching: MatchingService,
     private pricing: PricingService,
     private eventEmitter: EventEmitter2,
+    private careLogService: CareLogService,
   ) {}
 
   async createBooking(ownerId: string, dto: CreateBookingDto) {
@@ -268,10 +270,21 @@ export class BookingsService {
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: { status: 'active', actualStart: new Date() },
+      include: { pets: true },
     });
 
     // Generate care tasks from pet schedules
     await this.generateCareTasks(bookingId);
+
+    // Schedule care log entries for today
+    const petIds = (updated as any).pets?.map((bp: any) => bp.petId) || [];
+    if (petIds.length > 0) {
+      await this.careLogService.scheduleFromPetProfiles(
+        bookingId,
+        petIds,
+        (updated as any).actualStart || new Date(),
+      );
+    }
 
     this.eventEmitter.emit('booking.started', { booking: updated });
 
