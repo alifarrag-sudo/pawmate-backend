@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MatchingService } from '../bookings/matching.service';
+import { BookingsService } from '../bookings/bookings.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
@@ -15,6 +16,7 @@ export class SchedulerService {
     private redis: RedisService,
     private notifications: NotificationsService,
     private matching: MatchingService,
+    private bookingsService: BookingsService,
     private eventEmitter: EventEmitter2,
   ) {}
 
@@ -284,6 +286,121 @@ export class SchedulerService {
   @Cron('0 */5 * * * *')
   async refreshAvailabilityIndex() {
     await this.matching.refreshAvailabilityIndex();
+  }
+
+  // ============================================================
+  // Every minute: Start overtime for bookings past 15-min grace window
+  // ============================================================
+  @Cron(CronExpression.EVERY_MINUTE)
+  async checkOvertimeStarted() {
+    const graceCutoff = new Date(Date.now() - 15 * 60 * 1000); // 15 minutes ago
+
+    // Bookings still in ready_for_pickup after 15 min, no OvertimeLog yet
+    const overdueBookings = await this.prisma.booking.findMany({
+      where: {
+        status: 'ready_for_pickup',
+        readyForPickupAt: { lt: graceCutoff },
+        overtimeLog: { is: null },
+      } as any,
+      include: {
+        owner: { select: { id: true, firstName: true } },
+        sitter: { select: { id: true, firstName: true } },
+      },
+    });
+
+    for (const booking of overdueBookings) {
+      const claimed = await this.redis.set(`overtime:start:${booking.id}`, '1', 'NX', 300);
+      if (claimed !== 'OK') continue;
+
+      this.logger.log(`Starting overtime for booking ${booking.id}`);
+
+      await (this.prisma as any).overtimeLog.create({
+        data: {
+          bookingId: booking.id,
+          startedAt: new Date(),
+          status: 'ACTIVE',
+        },
+      });
+
+      const owner = (booking as any).owner;
+      const sitter = (booking as any).sitter;
+
+      await this.notifications.sendPushToUser(sitter.id, {
+        title: '⏰ Owner is Late — Overtime Started',
+        body: 'The owner has not arrived within the 15-minute window. Overtime charges are now active.',
+        data: { type: 'overtime_started', bookingId: booking.id },
+      });
+
+      await this.notifications.sendPushToUser(owner.id, {
+        title: '⚠️ You Are Late — Overtime Charges Apply',
+        body: 'You are past the 15-minute pickup window. Overtime charges are now accruing.',
+        data: { type: 'overtime_started', bookingId: booking.id },
+      });
+
+      await Promise.all([
+        this.notifications.saveNotification(sitter.id, 'overtime_started', '⏰ Owner is Late', 'Overtime charges are active.', { bookingId: booking.id }),
+        this.notifications.saveNotification(owner.id, 'overtime_started', '⚠️ Overtime Charges Apply', 'You are past the pickup window.', { bookingId: booking.id }),
+      ]);
+    }
+  }
+
+  // ============================================================
+  // Every minute: Update overtime totals + notify per 30-min increment
+  // ============================================================
+  @Cron(CronExpression.EVERY_MINUTE)
+  async processOvertimeIncrements() {
+    const activeLogs = await (this.prisma as any).overtimeLog.findMany({
+      where: { status: 'ACTIVE' },
+      include: {
+        booking: {
+          include: {
+            owner: { select: { id: true } },
+            sitter: { select: { id: true } },
+          },
+        },
+      },
+    });
+
+    for (const log of activeLogs) {
+      const booking = log.booking;
+      if (!booking || booking.status === 'completed') {
+        // Booking was confirmed — close the log
+        await (this.prisma as any).overtimeLog.update({
+          where: { id: log.id },
+          data: { status: 'COMPLETED', endedAt: new Date() },
+        });
+        continue;
+      }
+
+      const currentMinutes = Math.floor((Date.now() - new Date(log.startedAt).getTime()) / 60000);
+      const currentIncrements = currentMinutes > 0 ? Math.ceil(currentMinutes / 30) : 0;
+      const prevIncrements = log.notifiedIncrements;
+
+      if (currentMinutes === log.totalMinutes && currentIncrements === prevIncrements) continue; // no change
+
+      const incrementRate = this.bookingsService.calcOvertimeIncrementRate(booking);
+      const totalCharge = Math.round(currentIncrements * incrementRate * 100) / 100;
+
+      await (this.prisma as any).overtimeLog.update({
+        where: { id: log.id },
+        data: { totalMinutes: currentMinutes, totalCharge, notifiedIncrements: currentIncrements },
+      });
+
+      // Notify owner at each new 30-min increment
+      if (currentIncrements > prevIncrements && currentIncrements > 0) {
+        const owner = (booking as any).owner;
+        await this.notifications.sendPushToUser(owner.id, {
+          title: `⏱️ Overtime: ${totalCharge} EGP`,
+          body: `You're ${currentMinutes} minute(s) late. Cumulative overtime charge: ${totalCharge} EGP.`,
+          data: { type: 'overtime_increment', bookingId: booking.id, totalCharge, currentMinutes },
+        });
+        await this.notifications.saveNotification(
+          owner.id, 'overtime_increment', `⏱️ Overtime: ${totalCharge} EGP`,
+          `${currentMinutes} minutes late — cumulative charge: ${totalCharge} EGP`,
+          { bookingId: booking.id, totalCharge },
+        );
+      }
+    }
   }
 
   // ============================================================

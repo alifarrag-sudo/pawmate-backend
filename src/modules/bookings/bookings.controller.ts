@@ -70,4 +70,30 @@ export class BookingsController {
   cancel(@Request() req: any, @Param('id') id: string, @Body('reason') reason: string) {
     return this.bookingsService.cancelBooking(req.user?.id, id, reason);
   }
+
+  // ── Geo-locked pickup & overtime ────────────────────────────
+
+  @Patch(':id/ready-for-pickup')
+  readyForPickup(@Request() req: any, @Param('id') id: string) {
+    return this.bookingsService.markReadyForPickup(req.user?.id, id);
+  }
+
+  @Get(':id/overtime')
+  getOvertimeStatus(@Request() req: any, @Param('id') id: string) {
+    return this.bookingsService.getOvertimeStatus(req.user?.id, id);
+  }
+
+  @Patch(':id/confirm-pickup')
+  confirmPickup(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { ownerLat: number; ownerLng: number; overtimeAcknowledged: boolean },
+  ) {
+    return this.bookingsService.confirmPickup(req.user?.id, id, body);
+  }
+
+  @Patch(':id/force-complete')
+  forceComplete(@Request() req: any, @Param('id') id: string, @Body('reason') reason: string) {
+    return this.bookingsService.forceComplete(req.user?.id, id, reason);
+  }
 }

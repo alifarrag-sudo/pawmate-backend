@@ -471,8 +471,147 @@ export class BookingsService {
   }
 
   // ============================================================
+  // GEO-LOCKED PICKUP
+  // ============================================================
+
+  async markReadyForPickup(sitterId: string, bookingId: string) {
+    const booking = await this.getBookingOrThrow(bookingId);
+    if (booking.sitterId !== sitterId) throw new ForbiddenException('Not your booking.');
+    if (booking.status !== 'active') {
+      throw new BadRequestException('Booking must be active to mark as ready for pickup.');
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'ready_for_pickup', readyForPickupAt: new Date() } as any,
+      include: { owner: { select: { id: true, firstName: true } } },
+    });
+
+    this.eventEmitter.emit('booking.ready_for_pickup', { booking: updated });
+    return updated;
+  }
+
+  async getOvertimeStatus(userId: string, bookingId: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { overtimeLog: true },
+    });
+    if (!booking) throw new NotFoundException('Booking not found.');
+    if (booking.ownerId !== userId && booking.sitterId !== userId) {
+      throw new ForbiddenException('Access denied.');
+    }
+
+    const log = (booking as any).overtimeLog;
+    if (!log) {
+      return { hasOvertime: false, totalMinutes: 0, totalCharge: 0, incrementRate: 0, status: null };
+    }
+
+    const incrementRate = this.calcOvertimeIncrementRate(booking as any);
+    return {
+      hasOvertime: true,
+      totalMinutes: log.totalMinutes,
+      totalCharge: Number(log.totalCharge),
+      incrementRate,
+      incrementsCharged: log.totalMinutes > 0 ? Math.ceil(log.totalMinutes / 30) : 0,
+      status: log.status,
+      startedAt: log.startedAt,
+    };
+  }
+
+  async confirmPickup(ownerId: string, bookingId: string, data: {
+    ownerLat: number;
+    ownerLng: number;
+    overtimeAcknowledged: boolean;
+  }) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { overtimeLog: true },
+    });
+    if (!booking) throw new NotFoundException('Booking not found.');
+    if (booking.ownerId !== ownerId) throw new ForbiddenException('Not your booking.');
+    if (booking.status !== 'ready_for_pickup') {
+      throw new BadRequestException('Booking is not ready for pickup.');
+    }
+
+    const log = (booking as any).overtimeLog;
+    const overtimeCharge = log ? Number(log.totalCharge) : 0;
+
+    if (overtimeCharge > 0 && !data.overtimeAcknowledged) {
+      throw new BadRequestException({
+        error: 'OVERTIME_NOT_ACKNOWLEDGED',
+        message: 'You must acknowledge overtime charges before confirming pickup.',
+        overtimeCharge,
+      });
+    }
+
+    // Process overtime payment
+    if (overtimeCharge > 0 && log) {
+      const owner = await this.prisma.user.findUnique({ where: { id: ownerId }, select: { walletBalance: true } });
+      const walletBalance = Number(owner?.walletBalance || 0);
+      const sitterShare = Math.round(overtimeCharge * 0.85 * 100) / 100;
+
+      if (walletBalance >= overtimeCharge) {
+        await this.prisma.$transaction([
+          this.prisma.user.update({ where: { id: ownerId }, data: { walletBalance: { decrement: overtimeCharge } } as any }),
+          this.prisma.user.update({ where: { id: booking.sitterId }, data: { walletBalance: { increment: sitterShare } } as any }),
+        ]);
+      } else {
+        // Insufficient funds — flag outstanding balance
+        await this.prisma.user.update({
+          where: { id: ownerId },
+          data: { outstandingBalance: { increment: overtimeCharge } } as any,
+        });
+        this.logger.warn(`Owner ${ownerId} has insufficient wallet for overtime ${overtimeCharge} EGP — flagged as outstanding.`);
+      }
+
+      await this.prisma.overtimeLog.update({
+        where: { id: log.id },
+        data: { endedAt: new Date(), status: 'COMPLETED', totalMinutes: log.totalMinutes },
+      } as any);
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'completed', pickupConfirmedAt: new Date(), actualEnd: new Date() } as any,
+    });
+
+    this.eventEmitter.emit('booking.pickup_confirmed', { booking: updated, overtimeCharge });
+    this.eventEmitter.emit('booking.confirmed', { booking: updated });
+    return { ...updated, overtimeCharge };
+  }
+
+  async forceComplete(adminId: string, bookingId: string, reason: string) {
+    const booking = await this.getBookingOrThrow(bookingId);
+    const allowed = ['active', 'ready_for_pickup'];
+    if (!allowed.includes(booking.status as string)) {
+      throw new BadRequestException(`Cannot force-complete booking with status: ${booking.status}`);
+    }
+
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'completed', actualEnd: new Date(), pickupConfirmedAt: new Date() } as any,
+    });
+
+    await (this.prisma as any).auditLog.create({
+      data: { entityType: 'booking', entityId: bookingId, action: 'force_complete', actorId: adminId, metadata: { reason } },
+    });
+
+    this.eventEmitter.emit('booking.confirmed', { booking: updated });
+    this.logger.warn(`Admin ${adminId} force-completed booking ${bookingId}: ${reason}`);
+    return updated;
+  }
+
+  // ============================================================
   // PRIVATE HELPERS
   // ============================================================
+
+  calcOvertimeIncrementRate(booking: { totalPrice: any; requestedStart: Date; requestedEnd: Date }): number {
+    const durationMs = booking.requestedEnd.getTime() - booking.requestedStart.getTime();
+    const durationHours = Math.max(durationMs / (1000 * 60 * 60), 0.5);
+    const hourlyRate = Number(booking.totalPrice) / durationHours;
+    // 1.5x hourly rate, billed per 30-min increment
+    return Math.round(hourlyRate * 1.5 * 0.5 * 100) / 100;
+  }
 
   private async getBookingOrThrow(bookingId: string): Promise<Booking> {
     const booking = await this.prisma.booking.findUnique({ where: { id: bookingId } });
