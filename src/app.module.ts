@@ -20,6 +20,7 @@ import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { CareLogModule } from './modules/care-log/care-log.module';
+import { OffersModule } from './modules/offers/offers.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { CareLogModule } from './modules/care-log/care-log.module';
     AdminModule,
     SchedulerModule,
     CareLogModule,
+    OffersModule,
   ],
 })
 export class AppModule {}

@@ -133,6 +133,14 @@ enum ServiceType {
   house_sitting
 }
 
+enum OfferStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  COUNTERED
+}
+
 enum BookingType {
   hourly
   daily
@@ -392,6 +400,8 @@ model User {
   adminActions      AdminAction[]  @relation("AdminActor")
   cancelledBookings Booking[]      @relation("CancelledBy")
   completedCareLogs CareLog[]      @relation("CareLogCompleter")
+  offersAsOwner     Offer[]        @relation("OfferOwner")
+  offersAsSitter    Offer[]        @relation("OfferSitter")
 
   @@index([phone])
   @@index([email])
@@ -466,12 +476,19 @@ model SitterProfile {
   petSizes         String[] // WeightCategory values
   maxPetsPerBooking Int     @default(3)
 
-  // Pricing (EGP)
+  // Pricing (EGP) — legacy generic rates
   hourlyRate  Decimal? @db.Decimal(8, 2)
   dailyRate   Decimal? @db.Decimal(8, 2)
   weeklyRate  Decimal? @db.Decimal(8, 2)
   monthlyRate Decimal? @db.Decimal(8, 2)
   extraPetFee Decimal  @default(0) @db.Decimal(8, 2)
+
+  // Per-service dynamic pricing (set by sitter within tier range)
+  dogWalkingPrice    Decimal? @db.Decimal(8, 2)  // per hour
+  houseSittingPrice  Decimal? @db.Decimal(8, 2)  // per day
+  daycarePrice       Decimal? @db.Decimal(8, 2)  // per day
+  overnightPrice     Decimal? @db.Decimal(8, 2)  // per night
+  dropInVisitPrice   Decimal? @db.Decimal(8, 2)  // per visit
 
   // Location
   lat             Decimal? @db.Decimal(10, 8)
@@ -493,10 +510,11 @@ model SitterProfile {
   cancellationRate Decimal @default(0.00) @db.Decimal(5, 2)
 
   // Badges
-  isVerified      Boolean @default(false)
-  hasPoliceCheck  Boolean @default(false)
-  isSuperSitter   Boolean @default(false)
-  isFeatured      Boolean @default(false)
+  isVerified        Boolean @default(false)
+  hasPoliceCheck    Boolean @default(false)
+  isSuperSitter     Boolean @default(false)
+  isFeatured        Boolean @default(false)
+  isVerifiedTrainer Boolean @default(false)
 
   // Status
   isActive       Boolean  @default(true)
@@ -1164,6 +1182,33 @@ model LoyaltyTransaction {
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("loyalty_transactions")
+}
+
+// ============================================================
+// OFFERS (dynamic pricing negotiation)
+// ============================================================
+
+model Offer {
+  id            String      @id @default(uuid())
+  ownerId       String
+  owner         User        @relation("OfferOwner", fields: [ownerId], references: [id])
+  sitterId      String
+  sitter        User        @relation("OfferSitter", fields: [sitterId], references: [id])
+  service       ServiceType
+  ownerPrice    Decimal     @db.Decimal(8, 2)
+  sitterCounter Decimal?    @db.Decimal(8, 2)
+  finalPrice    Decimal?    @db.Decimal(8, 2)
+  status        OfferStatus @default(PENDING)
+  round         Int         @default(1)   // 1 = initial, 2 = after counter
+  expiresAt     DateTime
+  bookingId     String?                   // set when offer is accepted → booking created
+  message       String?                   // optional message with offer
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([ownerId, status])
+  @@index([sitterId, status])
+  @@map("offers")
 }
 
 // ============================================================

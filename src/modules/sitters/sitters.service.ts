@@ -1,5 +1,6 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { buildPricingInfo, getPriceRange, computeSitterTier } from '../../common/utils/pricing.util';
 
 const DAY_MAP: Record<number, string> = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat' };
 
@@ -36,12 +37,28 @@ export class SittersService {
       include: { reviewer: { select: { firstName: true, lastName: true } } },
     });
 
+    // Build per-service pricing summary
+    const currentPrices: Record<string, number | null> = {
+      dog_walking:        profile.dogWalkingPrice ? Number(profile.dogWalkingPrice) : null,
+      house_sitting:      profile.houseSittingPrice ? Number(profile.houseSittingPrice) : null,
+      daycare:            profile.daycarePrice ? Number(profile.daycarePrice) : null,
+      overnight_boarding: profile.overnightPrice ? Number(profile.overnightPrice) : null,
+      drop_in:            profile.dropInVisitPrice ? Number(profile.dropInVisitPrice) : null,
+    };
+    const pricing = buildPricingInfo(
+      profile.totalReviews,
+      Number(profile.avgRating),
+      profile.isVerifiedTrainer,
+      currentPrices,
+    );
+
     return {
       ...profile,
       yearsOfExperience: profile.experienceYears,
       maxPets: profile.maxPetsPerBooking,
       acceptedSpecies: profile.petTypes,
       weeklyTemplate,
+      pricing,
       reviews: reviews.map(r => ({
         id: r.id,
         rating: Number(r.overallRating),
@@ -118,5 +135,65 @@ export class SittersService {
       where: { sitterId: profile.id },
     });
     return { templates, date };
+  }
+
+  // ─── DYNAMIC PRICING ────────────────────────────────────────────────────
+
+  /** Get pricing tier, ranges and current service prices for any sitter (by sitterProfile.id) */
+  async getPricingInfo(sitterId: string) {
+    const profile = await this.prisma.sitterProfile.findUnique({ where: { id: sitterId } });
+    if (!profile) throw new NotFoundException('Sitter not found');
+
+    const currentPrices: Record<string, number | null> = {
+      dog_walking:        profile.dogWalkingPrice ? Number(profile.dogWalkingPrice) : null,
+      house_sitting:      profile.houseSittingPrice ? Number(profile.houseSittingPrice) : null,
+      daycare:            profile.daycarePrice ? Number(profile.daycarePrice) : null,
+      overnight_boarding: profile.overnightPrice ? Number(profile.overnightPrice) : null,
+      drop_in:            profile.dropInVisitPrice ? Number(profile.dropInVisitPrice) : null,
+    };
+
+    return buildPricingInfo(
+      profile.totalReviews,
+      Number(profile.avgRating),
+      profile.isVerifiedTrainer,
+      currentPrices,
+    );
+  }
+
+  /** Sitter updates their per-service prices (validated against tier ranges) */
+  async updateServicePricing(userId: string, prices: {
+    dog_walking?: number;
+    house_sitting?: number;
+    daycare?: number;
+    overnight_boarding?: number;
+    drop_in?: number;
+  }) {
+    const profile = await this.prisma.sitterProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Sitter profile not found');
+
+    const tier = computeSitterTier(profile.totalReviews, Number(profile.avgRating));
+
+    // Validate each submitted price is within allowed range
+    for (const [svc, price] of Object.entries(prices)) {
+      if (price === undefined || price === null) continue;
+      const range = getPriceRange(svc, tier, profile.isVerifiedTrainer);
+      if (price < range.min || price > range.max) {
+        throw new BadRequestException({
+          error: 'PRICE_OUT_OF_RANGE',
+          message: `Price for ${svc} must be between ${range.min} and ${range.max} EGP for your tier (${tier}).`,
+        });
+      }
+    }
+
+    return this.prisma.sitterProfile.update({
+      where: { userId },
+      data: {
+        dogWalkingPrice:   prices.dog_walking        != null ? prices.dog_walking        : undefined,
+        houseSittingPrice: prices.house_sitting       != null ? prices.house_sitting       : undefined,
+        daycarePrice:      prices.daycare             != null ? prices.daycare             : undefined,
+        overnightPrice:    prices.overnight_boarding  != null ? prices.overnight_boarding  : undefined,
+        dropInVisitPrice:  prices.drop_in             != null ? prices.drop_in             : undefined,
+      },
+    });
   }
 }
