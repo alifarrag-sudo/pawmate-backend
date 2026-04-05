@@ -147,7 +147,13 @@ export class ProvidersService {
         deliveryType: data.deliveryType as any,
         deliveryAddress: data.deliveryAddress,
         notes: data.notes,
-        items: { create: orderItems.map(item => ({ ...item, product: { connect: { id: item.productId } } })) },
+        items: {
+          create: orderItems.map(item => ({
+            product: { connect: { id: item.productId } },
+            quantity: item.quantity,
+            unitPrice: item.unitPrice,
+          })),
+        },
       },
       include: { items: { include: { product: true } } },
     });

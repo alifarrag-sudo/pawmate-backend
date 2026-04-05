@@ -23,6 +23,10 @@ export class ReviewsService {
       serviceType?: string;
     },
   ) {
+    if (!data.bookingId) throw new BadRequestException('bookingId is required');
+    if (!data.sitterId) throw new BadRequestException('sitterId is required');
+    if (!data.rating || data.rating < 1 || data.rating > 5) throw new BadRequestException('rating must be between 1 and 5');
+
     // Verify booking belongs to reviewer and is completed
     const booking = await this.prisma.booking.findFirst({
       where: { id: data.bookingId, ownerId: reviewerId, status: 'completed' },
