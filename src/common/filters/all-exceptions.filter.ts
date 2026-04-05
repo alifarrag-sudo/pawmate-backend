@@ -58,8 +58,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         message = exception.message.split('\n').slice(0, 2).join(' ').trim();
         details = { prismaCode: exception.code, meta: exception.meta };
       }
+    } else if (exception instanceof Prisma.PrismaClientValidationError) {
+      this.logger.error(`Prisma validation error: ${exception.message}`);
+      errorCode = 'PRISMA_VALIDATION_ERROR';
+      message = exception.message.split('\n').filter(Boolean).slice(-3).join(' ').trim();
     } else if (exception instanceof Error) {
       this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      errorCode = 'INTERNAL_ERROR';
+      message = exception.message?.slice(0, 200) || 'An unexpected error occurred';
     }
 
     // Log server errors (don't log 4xx in production)
