@@ -581,6 +581,9 @@ export class BookingsService {
   }
 
   async forceComplete(adminId: string, bookingId: string, reason: string) {
+    const admin = await this.prisma.user.findUnique({ where: { id: adminId }, select: { role: true } });
+    if (!admin || admin.role !== 'admin') throw new ForbiddenException('Admin access required.');
+
     const booking = await this.getBookingOrThrow(bookingId);
     const allowed = ['active', 'ready_for_pickup'];
     if (!allowed.includes(booking.status as string)) {

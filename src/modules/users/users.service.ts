@@ -52,6 +52,7 @@ export class UsersService {
         isSitter: true,
         idVerified: true,
         walletBalance: true,
+        outstandingBalance: true,
         language: true,
         role: true,
         loyaltyTier: true,
