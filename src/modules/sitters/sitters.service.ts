@@ -106,8 +106,9 @@ export class SittersService {
     if ('yearsOfExperience' in data) { mapped.experienceYears = data.yearsOfExperience; delete mapped.yearsOfExperience; }
     if ('maxPetsAtOnce' in data) { mapped.maxPetsPerBooking = data.maxPetsAtOnce; delete mapped.maxPetsAtOnce; }
     if ('acceptedSpecies' in data) { mapped.petTypes = data.acceptedSpecies; delete mapped.acceptedSpecies; }
-    // homeEnvironment is not in schema — drop it to avoid Prisma errors
+    // Strip fields not in the SitterProfile schema
     delete mapped.homeEnvironment;
+    delete mapped.serviceLocationType;
     return mapped;
   }
 
@@ -126,6 +127,26 @@ export class SittersService {
       where: { userId },
       data: this.mapProfileInput(data),
     });
+  }
+
+  /** Replace the sitter's weekly availability template (all days at once) */
+  async setWeeklyTemplate(userId: string, days: { dayOfWeek: number; startTime: string; endTime: string }[]) {
+    const profile = await this.prisma.sitterProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Sitter profile not found');
+
+    // Replace all existing templates with the new set
+    await this.prisma.sitterAvailabilityTemplate.deleteMany({ where: { sitterId: profile.id } });
+    if (days.length > 0) {
+      await this.prisma.sitterAvailabilityTemplate.createMany({
+        data: days.map(d => ({
+          sitterId: profile.id,
+          dayOfWeek: d.dayOfWeek,
+          startTime: d.startTime || '09:00',
+          endTime: d.endTime || '18:00',
+        })),
+      });
+    }
+    return this.prisma.sitterAvailabilityTemplate.findMany({ where: { sitterId: profile.id } });
   }
 
   async getAvailability(sitterId: string, date?: string) {

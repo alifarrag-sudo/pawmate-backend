@@ -31,6 +31,12 @@ export class SittersController {
     return this.sittersService.updateServicePricing(req.user?.id, body);
   }
 
+  /** Set/replace sitter weekly availability template */
+  @Post('profile/availability/template')
+  setWeeklyTemplate(@Request() req: any, @Body('days') days: { dayOfWeek: number; startTime: string; endTime: string }[]) {
+    return this.sittersService.setWeeklyTemplate(req.user?.id, days || []);
+  }
+
   @Get(':id/availability')
   getAvailability(@Param('id') id: string, @Query('date') date?: string) {
     return this.sittersService.getAvailability(id, date);
