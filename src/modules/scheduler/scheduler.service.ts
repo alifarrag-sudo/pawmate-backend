@@ -392,7 +392,7 @@ export class SchedulerService {
         await this.notifications.sendPushToUser(owner.id, {
           title: `⏱️ Overtime: ${totalCharge} EGP`,
           body: `You're ${currentMinutes} minute(s) late. Cumulative overtime charge: ${totalCharge} EGP.`,
-          data: { type: 'overtime_increment', bookingId: booking.id, totalCharge, currentMinutes },
+          data: { type: 'overtime_increment', bookingId: booking.id, totalCharge: String(totalCharge), currentMinutes: String(currentMinutes) },
         });
         await this.notifications.saveNotification(
           owner.id, 'overtime_increment', `⏱️ Overtime: ${totalCharge} EGP`,
