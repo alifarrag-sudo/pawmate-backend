@@ -140,11 +140,11 @@ export class BookingsService {
       profilePhoto: pet.profilePhoto,
     }));
 
-    // 11. Create booking — always store sitterProfile.userId (User ID) in Booking.sitterId
+    // 11. Create booking — use connect pattern to satisfy Prisma's BookingCreateInput type
     const booking = await this.prisma.booking.create({
       data: {
-        ownerId,
-        sitterId: sitterProfile.userId,
+        owner: { connect: { id: ownerId } },
+        sitter: { connect: { id: sitterProfile.userId } },
         bookingType: dto.bookingType,
         serviceType: dto.serviceType as any,
         status: 'pending',
@@ -164,7 +164,7 @@ export class BookingsService {
         petSnapshot: petSnapshots,
         reviewDeadline: new Date(end.getTime() + 14 * 24 * 60 * 60 * 1000),
         pets: {
-          create: dto.petIds.map((petId) => ({ petId })),
+          create: dto.petIds.map((petId) => ({ pet: { connect: { id: petId } } })),
         },
       },
     });
