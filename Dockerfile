@@ -18,5 +18,5 @@ RUN rm -f tsconfig.tsbuildinfo && npm run build && ls dist/main.js
 
 EXPOSE 3000
 
-# Run migrations then start
-CMD ["node", "dist/main"]
+# Run db push to apply schema changes, then start
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && node dist/main"]
