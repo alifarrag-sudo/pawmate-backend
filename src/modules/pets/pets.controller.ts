@@ -1,14 +1,16 @@
 import {
   Controller, Get, Post, Put, Patch, Delete, Param, Body, Request,
-  UseInterceptors, UploadedFiles, BadRequestException,
+  UseInterceptors, UploadedFiles, BadRequestException, UseGuards,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PetsService } from './pets.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('pets')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('pets')
 export class PetsController {
   constructor(

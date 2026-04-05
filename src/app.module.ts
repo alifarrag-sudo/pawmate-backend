@@ -1,10 +1,8 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -68,10 +66,6 @@ import { CareLogModule } from './modules/care-log/care-log.module';
     AdminModule,
     SchedulerModule,
     CareLogModule,
-  ],
-  providers: [
-    // Apply JWT guard globally — routes marked @Public() are exempted
-    { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
 })
 export class AppModule {}
