@@ -16,16 +16,6 @@ export class PetsController {
     private uploads: UploadsService,
   ) {}
 
-  @Get('debug')
-  async debugPets(@Request() req: any) {
-    try {
-      const result = await this.petsService.findByOwner(req.user?.id);
-      return { ok: true, count: result.length };
-    } catch (err: any) {
-      return { ok: false, error: err?.message, code: err?.code, stack: err?.stack?.split('\n').slice(0, 5) };
-    }
-  }
-
   @Get()
   getMyPets(@Request() req: any) {
     return this.petsService.findByOwner(req.user?.id);
