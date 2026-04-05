@@ -165,6 +165,43 @@ enum OvertimeStatus {
   WAIVED
 }
 
+enum AdoptionStatus {
+  available
+  pending
+  adopted
+}
+
+enum CauseCategory {
+  medical
+  rescue
+  shelter
+  food
+  spay_neuter
+  other
+}
+
+enum CauseStatus {
+  pending_approval
+  active
+  goal_reached
+  expired
+  rejected
+  cancelled
+}
+
+enum WithdrawalStatus {
+  pending
+  approved
+  rejected
+  transferred
+}
+
+enum ContactMethod {
+  in_app
+  phone
+  both
+}
+
 enum PaymentStatus {
   pending
   authorized
@@ -415,6 +452,12 @@ model User {
   products          Product[]
   ordersAsBuyer     Order[]        @relation("OrderBuyer")
   ordersAsSeller    Order[]        @relation("OrderSeller")
+  adoptionPosts         AdoptionPost[]      @relation("AdoptionPoster")
+  adoptionMessagesSent  AdoptionMessage[]   @relation("AdoptionMsgSender")
+  adoptionMessagesRecv  AdoptionMessage[]   @relation("AdoptionMsgReceiver")
+  causesCreated         Cause[]             @relation("CauseCreator")
+  donations             Donation[]          @relation("Donor")
+  withdrawalRequests    WithdrawalRequest[] @relation("WithdrawalRequester")
 
   @@index([phone])
   @@index([email])
@@ -1420,4 +1463,144 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// ============================================================
+// ADOPTION & CAUSES COMMUNITY
+// ============================================================
+
+model AdoptionPost {
+  id            String         @id @default(uuid())
+  posterId      String
+  poster        User           @relation("AdoptionPoster", fields: [posterId], references: [id])
+
+  petName       String
+  species       Species
+  breed         String?
+  ageCategory   AgeCategory?
+  gender        PetGender      @default(unknown)
+  isNeutered    Boolean        @default(false)
+  isVaccinated  Boolean        @default(false)
+  description   String
+  photos        String[]       @default([])
+
+  district      String?
+  city          String         @default("Cairo")
+
+  requirements  String?
+  contactMethod ContactMethod  @default(in_app)
+  contactPhone  String?
+
+  status        AdoptionStatus @default(available)
+  deletedAt     DateTime?
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  messages      AdoptionMessage[]
+
+  @@index([status, species, createdAt(sort: Desc)])
+  @@index([district, species, status])
+  @@map("adoption_posts")
+}
+
+model AdoptionMessage {
+  id         String       @id @default(uuid())
+  postId     String
+  post       AdoptionPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  senderId   String
+  sender     User         @relation("AdoptionMsgSender", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User         @relation("AdoptionMsgReceiver", fields: [receiverId], references: [id])
+  text       String
+  isRead     Boolean      @default(false)
+  createdAt  DateTime     @default(now())
+
+  @@index([postId, senderId, receiverId])
+  @@index([receiverId, isRead])
+  @@map("adoption_messages")
+}
+
+model Cause {
+  id              String        @id @default(uuid())
+  creatorId       String
+  creator         User          @relation("CauseCreator", fields: [creatorId], references: [id])
+
+  title           String
+  description     String
+  category        CauseCategory
+  coverPhoto      String?
+  photos          String[]      @default([])
+
+  goalAmount      Decimal       @db.Decimal(10, 2)
+  raisedAmount    Decimal       @default(0.00) @db.Decimal(10, 2)
+  donorCount      Int           @default(0)
+  endDate         DateTime
+
+  status          CauseStatus   @default(pending_approval)
+  rejectionReason String?
+  approvedById    String?
+  approvedAt      DateTime?
+
+  withdrawalMethod  String?
+  withdrawalAccount String?
+
+  deletedAt       DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  donations           Donation[]
+  updates             CauseUpdate[]
+  withdrawalRequests  WithdrawalRequest[]
+
+  @@index([status, endDate])
+  @@index([category, status])
+  @@map("causes")
+}
+
+model Donation {
+  id          String   @id @default(uuid())
+  causeId     String
+  cause       Cause    @relation(fields: [causeId], references: [id])
+  donorId     String
+  donor       User     @relation("Donor", fields: [donorId], references: [id])
+  amount      Decimal  @db.Decimal(10, 2)
+  message     String?
+  isAnonymous Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([causeId, createdAt(sort: Desc)])
+  @@index([donorId])
+  @@map("donations")
+}
+
+model CauseUpdate {
+  id        String   @id @default(uuid())
+  causeId   String
+  cause     Cause    @relation(fields: [causeId], references: [id], onDelete: Cascade)
+  text      String
+  photoUrl  String?
+  createdAt DateTime @default(now())
+
+  @@index([causeId, createdAt(sort: Desc)])
+  @@map("cause_updates")
+}
+
+model WithdrawalRequest {
+  id             String           @id @default(uuid())
+  causeId        String
+  cause          Cause            @relation(fields: [causeId], references: [id])
+  requestedById  String
+  requestedBy    User             @relation("WithdrawalRequester", fields: [requestedById], references: [id])
+  amount         Decimal          @db.Decimal(10, 2)
+  method         String
+  destination    String
+  status         WithdrawalStatus @default(pending)
+  adminNotes     String?
+  reviewedAt     DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([causeId])
+  @@index([status, createdAt])
+  @@map("withdrawal_requests")
 }

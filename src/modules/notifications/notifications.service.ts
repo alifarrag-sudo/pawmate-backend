@@ -133,6 +133,116 @@ export class NotificationsService {
   }
 
   // ============================================================
+  // ADOPTION & CAUSES EVENTS
+  // ============================================================
+
+  @OnEvent('adoption.message')
+  async onAdoptionMessage({ receiverId, senderName, petName, postId }: any) {
+    await this.sendPushToUser(receiverId, {
+      title: '💬 New Adoption Message',
+      body: `${senderName} sent you a message about ${petName}.`,
+      data: { type: 'adoption_message', postId },
+    });
+    await this.saveNotification(receiverId, 'adoption_message', '💬 New Adoption Message',
+      `${senderName} sent you a message about ${petName}.`, { postId });
+  }
+
+  @OnEvent('cause.donated')
+  async onCauseDonated({ creatorId, donorName, amount, causeTitle, causeId }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: '💛 New Donation!',
+      body: `${donorName} donated ${amount} EGP to "${causeTitle}".`,
+      data: { type: 'cause_donated', causeId },
+    });
+    await this.saveNotification(creatorId, 'cause_donated', '💛 New Donation!',
+      `${donorName} donated ${amount} EGP to "${causeTitle}".`, { causeId });
+  }
+
+  @OnEvent('cause.updated')
+  async onCauseUpdated({ causeId, causeTitle, updateText, donorIds }: any) {
+    for (const donorId of donorIds) {
+      await this.sendPushToUser(donorId, {
+        title: '📢 Cause Update',
+        body: `"${causeTitle}" has a new update.`,
+        data: { type: 'cause_updated', causeId },
+      });
+      await this.saveNotification(donorId, 'cause_updated', '📢 Cause Update',
+        `"${causeTitle}": ${updateText.slice(0, 80)}`, { causeId });
+    }
+  }
+
+  @OnEvent('cause.goal_reached')
+  async onCauseGoalReached({ cause, creatorId }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: '🎉 Goal Reached!',
+      body: `Your cause "${cause.title}" has reached its funding goal!`,
+      data: { type: 'cause_goal_reached', causeId: cause.id },
+    });
+    await this.saveNotification(creatorId, 'cause_goal_reached', '🎉 Goal Reached!',
+      `"${cause.title}" reached its goal. Contact support to arrange withdrawal.`, { causeId: cause.id });
+  }
+
+  @OnEvent('cause.approved')
+  async onCauseApproved({ causeId, creatorId, title }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: '✅ Cause Approved!',
+      body: `Your cause "${title}" is now live and accepting donations.`,
+      data: { type: 'cause_approved', causeId },
+    });
+    await this.saveNotification(creatorId, 'cause_approved', '✅ Cause Approved!',
+      `"${title}" is now live.`, { causeId });
+  }
+
+  @OnEvent('cause.rejected')
+  async onCauseRejected({ causeId, creatorId, title, reason }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: 'Cause Not Approved',
+      body: `Your cause "${title}" was not approved. Reason: ${reason || 'See app for details.'}`,
+      data: { type: 'cause_rejected', causeId },
+    });
+    await this.saveNotification(creatorId, 'cause_rejected', 'Cause Not Approved',
+      `"${title}": ${reason || 'Contact support for details.'}`, { causeId });
+  }
+
+  @OnEvent('withdrawal.requested')
+  async onWithdrawalRequested({ causeId, causeTitle, amount, requestId }: any) {
+    // Notify all admins
+    const admins = await this.prisma.user.findMany({
+      where: { role: 'admin', isActive: true },
+      select: { id: true },
+    });
+    for (const admin of admins) {
+      await this.sendPushToUser(admin.id, {
+        title: '💸 Withdrawal Request',
+        body: `${amount} EGP withdrawal requested for "${causeTitle}".`,
+        data: { type: 'withdrawal_requested', causeId, requestId },
+      });
+    }
+  }
+
+  @OnEvent('withdrawal.approved')
+  async onWithdrawalApproved({ creatorId, amount, causeTitle }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: '✅ Withdrawal Approved',
+      body: `Your withdrawal of ${amount} EGP from "${causeTitle}" has been approved. Transfer within 48 hours.`,
+      data: { type: 'withdrawal_approved', causeTitle },
+    });
+    await this.saveNotification(creatorId, 'withdrawal_approved', '✅ Withdrawal Approved',
+      `${amount} EGP from "${causeTitle}" — transfer within 48h.`, { causeTitle });
+  }
+
+  @OnEvent('withdrawal.rejected')
+  async onWithdrawalRejected({ creatorId, amount, causeTitle, reason }: any) {
+    await this.sendPushToUser(creatorId, {
+      title: 'Withdrawal Not Approved',
+      body: `Your withdrawal of ${amount} EGP from "${causeTitle}" was rejected.`,
+      data: { type: 'withdrawal_rejected', causeTitle },
+    });
+    await this.saveNotification(creatorId, 'withdrawal_rejected', 'Withdrawal Not Approved',
+      reason || 'Contact support for details.', { causeTitle });
+  }
+
+  // ============================================================
   // CORE METHODS
   // ============================================================
 
