@@ -88,4 +88,12 @@ export class AuthController {
   ) {
     return this.authService.changePassword(userId, dto.currentPassword, dto.newPassword);
   }
+
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign in or register with Google OAuth access token' })
+  async googleAuth(@Body() body: { accessToken: string; email?: string; name?: string }) {
+    return this.authService.googleAuth(body.accessToken, body.email, body.name);
+  }
 }

@@ -300,6 +300,66 @@ export class AuthService {
     return { message: 'Password changed successfully. Please log in again.' };
   }
 
+  async googleAuth(accessToken: string, email?: string, name?: string) {
+    // Verify the Google token and get user info
+    let googleUser: { email: string; name?: string; sub?: string };
+    try {
+      const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) throw new UnauthorizedException('Invalid Google token');
+      googleUser = await res.json() as { email: string; name?: string; sub?: string };
+    } catch {
+      // Fall back to passed-in values if fetch fails (mobile already fetched)
+      if (!email) throw new UnauthorizedException('Could not verify Google token');
+      googleUser = { email, name };
+    }
+
+    if (!googleUser.email) throw new UnauthorizedException('Google account has no email');
+
+    // Find existing user by email or create one
+    let user = await this.prisma.user.findUnique({ where: { email: googleUser.email } });
+
+    if (!user) {
+      // Auto-register via Google
+      const nameParts = (googleUser.name || googleUser.email.split('@')[0]).split(' ');
+      const firstName = nameParts[0] || 'User';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      user = await this.prisma.user.create({
+        data: {
+          email: googleUser.email,
+          firstName,
+          lastName,
+          phone: null as any, // Google users may not have a phone
+          passwordHash: await bcrypt.hash(generateSecureToken(32), SALT_ROUNDS),
+          role: 'user',
+          activeRole: 'owner',
+          isOwner: true,
+          isSitter: false,
+          phoneVerified: true, // email-verified via Google
+          language: 'en',
+        },
+      });
+    }
+
+    const tokens = await this.generateTokenPair(user);
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        activeRole: user.activeRole,
+        isOwner: user.isOwner,
+        isSitter: user.isSitter,
+        role: user.role,
+      },
+    };
+  }
+
   private async generateTokenPair(user: any, ipAddress?: string, userAgent?: string) {
     const payload = {
       sub: user.id,
