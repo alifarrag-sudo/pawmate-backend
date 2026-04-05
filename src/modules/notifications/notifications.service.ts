@@ -243,6 +243,65 @@ export class NotificationsService {
   }
 
   // ============================================================
+  // EVENT LISTENERS (food marketplace)
+  // ============================================================
+
+  @OnEvent('food.order_placed')
+  async onFoodOrderPlaced({ orderId, sellerUserId, buyerName, totalAmount, pickupSlot }: any) {
+    await this.sendPushToUser(sellerUserId, {
+      title: '🍖 New Food Order!',
+      body: `${buyerName} ordered ${totalAmount} EGP — pickup: ${pickupSlot}. Confirm within 1 hour.`,
+      data: { type: 'food_order_placed', orderId },
+    });
+    await this.saveNotification(sellerUserId, 'food_order_placed', '🍖 New Food Order!',
+      `${buyerName} — ${totalAmount} EGP. Pickup: ${pickupSlot}`, { orderId });
+  }
+
+  @OnEvent('food.order_confirmed')
+  async onFoodOrderConfirmed({ orderId, buyerId }: any) {
+    await this.sendPushToUser(buyerId, {
+      title: '✅ Order Confirmed!',
+      body: 'Your food order has been confirmed by the seller. Get ready for pickup!',
+      data: { type: 'food_order_confirmed', orderId },
+    });
+    await this.saveNotification(buyerId, 'food_order_confirmed', '✅ Order Confirmed!',
+      'Your food order was confirmed. Pickup details in your order.', { orderId });
+  }
+
+  @OnEvent('food.order_rejected')
+  async onFoodOrderRejected({ orderId, buyerId, reason, totalAmount }: any) {
+    await this.sendPushToUser(buyerId, {
+      title: 'Order Cancelled',
+      body: `Your food order was cancelled. ${totalAmount} EGP refunded to your wallet.`,
+      data: { type: 'food_order_rejected', orderId },
+    });
+    await this.saveNotification(buyerId, 'food_order_rejected', 'Order Cancelled',
+      reason || `Refund of ${totalAmount} EGP sent to your wallet.`, { orderId });
+  }
+
+  @OnEvent('food.order_ready')
+  async onFoodOrderReady({ orderId, buyerId }: any) {
+    await this.sendPushToUser(buyerId, {
+      title: '🛍️ Order Ready for Pickup!',
+      body: 'Your order is packed and waiting. Head over to pick it up!',
+      data: { type: 'food_order_ready', orderId },
+    });
+    await this.saveNotification(buyerId, 'food_order_ready', '🛍️ Order Ready for Pickup!',
+      'Your food order is ready. Go pick it up now!', { orderId });
+  }
+
+  @OnEvent('food.order_picked_up')
+  async onFoodOrderPickedUp({ orderId, sellerUserId, sellerEarning }: any) {
+    await this.sendPushToUser(sellerUserId, {
+      title: '💰 Payment Received!',
+      body: `${sellerEarning} EGP has been added to your wallet. Order complete!`,
+      data: { type: 'food_order_picked_up', orderId },
+    });
+    await this.saveNotification(sellerUserId, 'food_order_picked_up', '💰 Payment Received!',
+      `${sellerEarning} EGP added to wallet. Thanks for selling on PawMate!`, { orderId });
+  }
+
+  // ============================================================
   // CORE METHODS
   // ============================================================
 

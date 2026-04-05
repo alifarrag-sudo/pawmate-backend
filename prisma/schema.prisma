@@ -290,6 +290,24 @@ enum TransactionType {
   commission
   compensation
   platform_credit
+  food_order_payment
+  food_order_earning
+}
+
+enum FoodOrderStatus {
+  placed
+  confirmed
+  rejected
+  ready_for_pickup
+  picked_up
+  cancelled
+}
+
+enum FoodTargetAnimal {
+  dog
+  cat
+  both
+  other
 }
 
 enum TransactionDirection {
@@ -452,6 +470,10 @@ model User {
   products          Product[]
   ordersAsBuyer     Order[]        @relation("OrderBuyer")
   ordersAsSeller    Order[]        @relation("OrderSeller")
+  foodSeller            FoodSeller?
+  foodOrdersAsBuyer     FoodOrder[]         @relation("FoodOrderBuyer")
+  foodReviewsGiven      FoodReview[]        @relation("FoodReviewer")
+  foodReviewsReceived   FoodReview[]        @relation("FoodReviewTarget")
   adoptionPosts         AdoptionPost[]      @relation("AdoptionPoster")
   adoptionMessagesSent  AdoptionMessage[]   @relation("AdoptionMsgSender")
   adoptionMessagesRecv  AdoptionMessage[]   @relation("AdoptionMsgReceiver")
@@ -1603,4 +1625,123 @@ model WithdrawalRequest {
   @@index([causeId])
   @@index([status, createdAt])
   @@map("withdrawal_requests")
+}
+
+// ============================================================
+// HOMEMADE PET FOOD MARKETPLACE
+// ============================================================
+
+model FoodSeller {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  user         User      @relation(fields: [userId], references: [id])
+  kitchenName  String
+  bio          String?
+  district     String?
+  profilePhoto String?
+  availability Json      // { days: string[], note: string }
+  avgRating    Decimal   @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int       @default(0)
+  totalSales   Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  products          FoodProduct[]
+  ordersAsSeller    FoodOrder[]   @relation("FoodSellerOrders")
+  reviewsReceived   FoodReview[]  @relation("FoodSellerReviewed")
+
+  @@index([isActive, district])
+  @@map("food_sellers")
+}
+
+model FoodProduct {
+  id           String          @id @default(uuid())
+  sellerId     String
+  seller       FoodSeller      @relation(fields: [sellerId], references: [id])
+  name         String
+  targetAnimal FoodTargetAnimal
+  description  String
+  ingredients  String[]        @default([])
+  allergens    String[]        @default([])
+  price        Decimal         @db.Decimal(8, 2)
+  unitDesc     String
+  photos       String[]        @default([])
+  stock        Int             @default(0)
+  isAvailable  Boolean         @default(true)
+  avgRating    Decimal         @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int             @default(0)
+  deletedAt    DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  orderItems FoodOrderItem[]
+  reviews    FoodReview[]    @relation("FoodProductReviewed")
+
+  @@index([sellerId, isAvailable])
+  @@index([targetAnimal, isAvailable])
+  @@map("food_products")
+}
+
+model FoodOrder {
+  id            String          @id @default(uuid())
+  buyerId       String
+  buyer         User            @relation("FoodOrderBuyer", fields: [buyerId], references: [id])
+  sellerId      String
+  seller        FoodSeller      @relation("FoodSellerOrders", fields: [sellerId], references: [id])
+  status        FoodOrderStatus @default(placed)
+  totalAmount   Decimal         @db.Decimal(10, 2)
+  sellerEarning Decimal         @db.Decimal(10, 2)
+  platformFee   Decimal         @db.Decimal(10, 2)
+  pickupSlot    String
+  rejectReason  String?
+  buyerNote     String?
+  confirmedAt   DateTime?
+  readyAt       DateTime?
+  pickedUpAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  items   FoodOrderItem[]
+  reviews FoodReview[]    @relation("FoodOrderReviews")
+
+  @@index([buyerId, status, createdAt(sort: Desc)])
+  @@index([sellerId, status, createdAt(sort: Desc)])
+  @@map("food_orders")
+}
+
+model FoodOrderItem {
+  id        String      @id @default(uuid())
+  orderId   String
+  order     FoodOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   FoodProduct @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal     @db.Decimal(8, 2)
+  subtotal  Decimal     @db.Decimal(10, 2)
+
+  @@map("food_order_items")
+}
+
+model FoodReview {
+  id           String      @id @default(uuid())
+  orderId      String
+  order        FoodOrder   @relation("FoodOrderReviews", fields: [orderId], references: [id])
+  reviewerId   String
+  reviewer     User        @relation("FoodReviewer", fields: [reviewerId], references: [id])
+  targetType   String      // 'product' | 'seller' | 'buyer'
+  productId    String?
+  product      FoodProduct? @relation("FoodProductReviewed", fields: [productId], references: [id])
+  sellerId     String?
+  seller       FoodSeller?  @relation("FoodSellerReviewed", fields: [sellerId], references: [id])
+  targetUserId String?
+  targetUser   User?        @relation("FoodReviewTarget", fields: [targetUserId], references: [id])
+  rating       Int
+  text         String?
+  createdAt    DateTime     @default(now())
+
+  @@index([productId])
+  @@index([sellerId])
+  @@index([orderId])
+  @@map("food_reviews")
 }

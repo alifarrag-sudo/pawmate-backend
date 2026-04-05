@@ -24,6 +24,7 @@ import { OffersModule } from './modules/offers/offers.module';
 import { ProvidersModule } from './modules/providers/providers.module';
 import { AdoptionModule } from './modules/adoption/adoption.module';
 import { CausesModule } from './modules/causes/causes.module';
+import { FoodModule } from './modules/food/food.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { CausesModule } from './modules/causes/causes.module';
     ProvidersModule,
     AdoptionModule,
     CausesModule,
+    FoodModule,
   ],
 })
 export class AppModule {}
