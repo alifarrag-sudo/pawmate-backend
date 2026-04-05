@@ -402,6 +402,11 @@ model User {
   completedCareLogs CareLog[]      @relation("CareLogCompleter")
   offersAsOwner     Offer[]        @relation("OfferOwner")
   offersAsSitter    Offer[]        @relation("OfferSitter")
+  providerProfile   ProviderProfile?
+  providerType      ProviderType?
+  products          Product[]
+  ordersAsBuyer     Order[]        @relation("OrderBuyer")
+  ordersAsSeller    Order[]        @relation("OrderSeller")
 
   @@index([phone])
   @@index([email])
@@ -1227,4 +1232,146 @@ model AdminAction {
 
   @@index([adminId, createdAt(sort: Desc)])
   @@map("admin_actions")
+}
+
+// ============================================================
+// PROVIDERS (Trainers, Kennels, Groomers, Vets, Shops, Food Sellers)
+// ============================================================
+
+enum ProviderType {
+  SITTER
+  TRAINER
+  KENNEL
+  GROOMER
+  VET
+  SHOP
+  FOOD_SELLER
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryType {
+  DELIVERY
+  PICKUP
+}
+
+model ProviderProfile {
+  id           String       @id @default(uuid())
+  userId       String       @unique
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  providerType ProviderType
+
+  // Business info
+  businessName String
+  tagline      String?
+  description  String?
+
+  // Location
+  address   String?
+  latitude  Decimal? @db.Decimal(10, 8)
+  longitude Decimal? @db.Decimal(11, 8)
+  city      String?
+  phone     String?
+
+  // Media
+  coverPhotos      String[] @default([])
+  verificationDocs String[] @default([])
+
+  // Flexible service data per provider type
+  serviceMenu    Json? // array of { name, price, duration?, description? }
+  operatingHours Json? // { mon: { open: "09:00", close: "18:00", closed: false }, ... }
+  maxCapacity    Int?  // for kennels
+
+  // Verification
+  verificationStatus VerificationStatus @default(PENDING)
+  isVerified         Boolean            @default(false)
+  verifiedAt         DateTime?
+  rejectionReason    String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  products Product[]
+
+  @@index([providerType, isVerified, isActive])
+  @@index([city, providerType])
+  @@map("provider_profiles")
+}
+
+model Product {
+  id                String           @id @default(uuid())
+  sellerId          String
+  seller            User             @relation(fields: [sellerId], references: [id])
+  providerProfileId String?
+  providerProfile   ProviderProfile? @relation(fields: [providerProfileId], references: [id])
+
+  name          String
+  description   String?
+  price         Decimal  @db.Decimal(8, 2)
+  photos        String[] @default([])
+  ingredients   String?  // for food sellers
+  allergens     String?  // for food sellers
+  stockQuantity Int      @default(0)
+  isAvailable   Boolean  @default(true)
+  sellerType    ProviderType
+
+  orderItems OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sellerId, isAvailable])
+  @@index([sellerType, isAvailable])
+  @@map("products")
+}
+
+model Order {
+  id       String @id @default(uuid())
+  buyerId  String
+  buyer    User   @relation("OrderBuyer", fields: [buyerId], references: [id])
+  sellerId String
+  seller   User   @relation("OrderSeller", fields: [sellerId], references: [id])
+
+  items         OrderItem[]
+  totalAmount   Decimal     @db.Decimal(10, 2)
+  platformFee   Decimal     @db.Decimal(10, 2)
+  sellerEarning Decimal     @db.Decimal(10, 2)
+
+  status          OrderStatus  @default(PENDING)
+  deliveryType    DeliveryType
+  deliveryAddress String?
+  notes           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([buyerId, status])
+  @@index([sellerId, status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String  @id @default(uuid())
+  orderId   String
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Decimal @db.Decimal(8, 2)
+
+  @@map("order_items")
 }

@@ -21,6 +21,7 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { CareLogModule } from './modules/care-log/care-log.module';
 import { OffersModule } from './modules/offers/offers.module';
+import { ProvidersModule } from './modules/providers/providers.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { OffersModule } from './modules/offers/offers.module';
     SchedulerModule,
     CareLogModule,
     OffersModule,
+    ProvidersModule,
   ],
 })
 export class AppModule {}
