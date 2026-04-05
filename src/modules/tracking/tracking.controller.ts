@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Patch, Param, Body, Request } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Patch, Param, Body, Request } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { TrackingService } from './tracking.service';
 
 @ApiTags('tracking')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('tracking')
 export class TrackingController {
   constructor(private trackingService: TrackingService) {}

@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Param, Body, Query, Request } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Param, Body, Query, Request } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { SocialService } from './social.service';
 
 @ApiTags('social')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('social')
 export class SocialController {
   constructor(private socialService: SocialService) {}

@@ -1,9 +1,11 @@
-import { Controller, Get, Post, Param, Body, Headers, Request } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Param, Body, Headers, Request } from '@nestjs/common';
+import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 
 @ApiTags('payments')
 @ApiBearerAuth()
+@UseGuards(JwtAuthGuard)
 @Controller('payments')
 export class PaymentsController {
   constructor(private paymentsService: PaymentsService) {}
