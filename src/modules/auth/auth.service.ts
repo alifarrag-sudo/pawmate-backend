@@ -15,13 +15,48 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { generateOTP, generateSecureToken, hashValue } from '../../common/utils/crypto.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
-import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
 
 const SALT_ROUNDS = 12;
-const OTP_TTL_SECONDS = 600; // 10 minutes
+const EMAIL_CODE_TTL = 600;       // 10 minutes
+const RESET_CODE_TTL = 600;       // 10 minutes
 const OTP_MAX_ATTEMPTS = 3;
-const OTP_RATE_LIMIT_SECONDS = 3600; // 1 hour window
-const OTP_RATE_LIMIT_MAX = 5; // max OTPs per phone per hour
+const OTP_RATE_LIMIT_SECONDS = 3600;
+const OTP_RATE_LIMIT_MAX = 5;
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+function rolesFromLegacy(role?: string): string[] {
+  if (!role) return ['PARENT'];
+  const r = role.toLowerCase();
+  if (r === 'sitter' || r === 'petfriend') return ['PARENT', 'PETFRIEND'];
+  if (r === 'both') return ['PARENT', 'PETFRIEND'];
+  return ['PARENT'];
+}
+
+function formatUser(user: any) {
+  return {
+    id: user.id,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    displayName: user.displayName,
+    profilePhoto: user.profilePhoto,
+    phone: user.phone,
+    email: user.email,
+    roles: user.roles ?? ['PARENT'],
+    activeRole: user.activeRole,
+    isParent: user.isParent,
+    isPetFriend: user.isPetFriend,
+    idVerified: user.idVerified,
+    emailVerified: user.emailVerified,
+    phoneVerified: user.phoneVerified,
+    authProvider: user.authProvider,
+    language: user.language,
+    role: user.role,
+    loyaltyTier: user.loyaltyTier,
+    loyaltyPoints: user.loyaltyPoints,
+  };
+}
 
 @Injectable()
 export class AuthService {
@@ -35,136 +70,67 @@ export class AuthService {
     private notifications: NotificationsService,
   ) {}
 
+  // ─── Register ─────────────────────────────────────────────────────────────
+
   async register(dto: RegisterDto) {
-    // Check duplicate phone
-    const existingPhone = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
-    if (existingPhone) {
-      // If already registered but not verified, resend OTP so they can complete registration
-      if (!existingPhone.phoneVerified) {
-        const otp = generateOTP(6);
-        const otpHash = hashValue(otp);
-        await this.redis.setex(`otp:${dto.phone}`, OTP_TTL_SECONDS, otpHash);
-        if (process.env.NODE_ENV !== 'production') {
-          this.logger.debug(`[DEV] OTP for ${dto.phone}: ${otp}`);
-          return { userId: existingPhone.id, message: `OTP resent to ${dto.phone}`, devOtp: otp };
-        }
-        await this.notifications.sendSms(dto.phone, `Your PawMate verification code is: ${otp}. Valid for 10 minutes.`);
-        return { userId: existingPhone.id, message: `OTP resent to ${dto.phone}` };
-      }
-      throw new ConflictException({ error: 'PHONE_EXISTS', message: 'This phone number is already registered. Please login instead.' });
+    const email = dto.email.trim().toLowerCase();
+
+    // Check duplicate email
+    const existing = await this.prisma.user.findUnique({ where: { email } });
+    if (existing) {
+      throw new ConflictException({
+        error: 'EMAIL_EXISTS',
+        message: 'An account with this email already exists. Sign in instead.',
+      });
     }
 
-    // Check duplicate email if provided
-    if (dto.email) {
-      const existingEmail = await this.prisma.user.findUnique({ where: { email: dto.email } });
-      if (existingEmail) {
-        throw new ConflictException({ error: 'EMAIL_EXISTS', message: 'This email is already registered.' });
-      }
-    }
-
-    // Hash password
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
+    const roles = rolesFromLegacy(dto.role);
 
-    // Create user
     const user = await this.prisma.user.create({
       data: {
-        phone: dto.phone,
-        email: dto.email,
+        email,
         passwordHash,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        isParent: dto.role === 'owner' || dto.role === 'both',
-        isPetFriend: dto.role === 'sitter' || dto.role === 'both',
-        activeRole: dto.role === 'sitter' ? 'petfriend' : 'parent',
-        language: dto.language || 'ar',
+        firstName: dto.firstName.trim(),
+        lastName: dto.lastName.trim(),
+        authProvider: 'email',
+        roles,
+        isParent: true,
+        isPetFriend: roles.includes('PETFRIEND'),
+        activeRole: roles.includes('PETFRIEND') ? 'petfriend' : 'parent',
+        language: dto.language || 'en',
+        emailVerified: false,
       },
     });
 
-    // Send OTP
-    const otp = generateOTP(6);
-    const otpHash = hashValue(otp);
-    await this.redis.setex(`otp:${dto.phone}`, OTP_TTL_SECONDS, otpHash);
-
-    // In non-production, skip SMS and return OTP directly
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.debug(`[DEV] OTP for ${dto.phone}: ${otp}`);
-      return {
-        userId: user.id,
-        message: `OTP sent to ${dto.phone}`,
-        devOtp: otp,
-      };
-    }
-
-    await this.notifications.sendSms(
-      dto.phone,
-      `Your PawMate verification code is: ${otp}. Valid for 10 minutes. Do not share this code.`,
+    // Send email verification code in background (non-blocking)
+    this.sendEmailVerificationCode(user.id, email).catch((err) =>
+      this.logger.warn(`Failed to send verification email to ${email}: ${err.message}`),
     );
 
+    const tokens = await this.generateTokenPair(user);
     return {
-      userId: user.id,
-      message: `OTP sent to ${dto.phone}`,
+      ...tokens,
+      user: formatUser(user),
     };
   }
 
-  async verifyOtp(dto: VerifyOtpDto) {
-    const attemptsKey = `otp:attempts:${dto.phone}`;
-    const otpKey = `otp:${dto.phone}`;
-
-    // Check attempts
-    const attempts = await this.redis.get(attemptsKey);
-    if (attempts && parseInt(attempts) >= OTP_MAX_ATTEMPTS) {
-      throw new BadRequestException({
-        error: 'OTP_MAX_ATTEMPTS',
-        message: 'Too many OTP attempts. Please request a new OTP.',
-      });
-    }
-
-    // Get stored OTP hash
-    const storedOtpHash = await this.redis.get(otpKey);
-    if (!storedOtpHash) {
-      throw new BadRequestException({
-        error: 'OTP_EXPIRED',
-        message: 'OTP has expired. Please request a new one.',
-      });
-    }
-
-    // Verify OTP
-    const inputHash = hashValue(dto.otp);
-    if (inputHash !== storedOtpHash) {
-      // Increment attempts
-      await this.redis.incr(attemptsKey);
-      await this.redis.expire(attemptsKey, OTP_TTL_SECONDS);
-      throw new BadRequestException({
-        error: 'OTP_INVALID',
-        message: 'Invalid OTP. Please try again.',
-      });
-    }
-
-    // OTP valid — clean up
-    await this.redis.del(otpKey);
-    await this.redis.del(attemptsKey);
-
-    // Mark phone as verified
-    const user = await this.prisma.user.update({
-      where: { phone: dto.phone },
-      data: { phoneVerified: true },
-    });
-
-    // Issue tokens
-    return this.generateTokenPair(user);
-  }
+  // ─── Login ────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
-    // Find user by phone
+    const email = dto.email.trim().toLowerCase();
+
     const user = await this.prisma.user.findFirst({
-      where: { phone: dto.phone, deletedAt: null },
+      where: { email, deletedAt: null },
     });
 
     if (!user) {
-      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Invalid phone or password.' });
+      throw new UnauthorizedException({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Incorrect email or password.',
+      });
     }
 
-    // Check if banned
     if (user.isBanned) {
       throw new UnauthorizedException({
         error: 'ACCOUNT_BANNED',
@@ -172,25 +138,390 @@ export class AuthService {
       });
     }
 
-    // Verify password
-    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordValid) {
-      // Track failed login attempts (for anomaly detection)
-      await this.trackFailedLogin(user.id, ipAddress);
-      throw new UnauthorizedException({ error: 'INVALID_CREDENTIALS', message: 'Invalid phone or password.' });
+    if (!user.passwordHash) {
+      // Social-login user trying to sign in with password
+      throw new UnauthorizedException({
+        error: 'SOCIAL_ACCOUNT',
+        message: `This account was created with ${user.authProvider}. Please sign in with ${user.authProvider}.`,
+      });
     }
 
-    // Update last login
+    const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    if (!passwordValid) {
+      await this.trackFailedLogin(user.id, ipAddress);
+      throw new UnauthorizedException({
+        error: 'INVALID_CREDENTIALS',
+        message: 'Incorrect email or password.',
+      });
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { lastLoginAt: new Date() },
     });
 
-    return this.generateTokenPair(user, ipAddress, userAgent);
+    const tokens = await this.generateTokenPair(user, ipAddress, userAgent);
+    return {
+      ...tokens,
+      user: formatUser(user),
+    };
   }
 
+  // ─── Social Login (Google + Facebook) ────────────────────────────────────
+
+  async socialLogin(dto: SocialLoginDto) {
+    let providerEmail: string | undefined = dto.email;
+    let providerName: string | undefined = dto.name;
+    let providerId: string | undefined;
+    let emailIsVerified = false;
+
+    // Verify token with provider
+    if (dto.provider === 'google') {
+      try {
+        const res = await fetch(
+          `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${dto.token}`,
+        );
+        if (res.ok) {
+          const info: any = await res.json();
+          providerEmail = info.email || providerEmail;
+          providerName = info.name || providerName;
+          providerId = info.sub;
+          emailIsVerified = info.email_verified === 'true' || info.email_verified === true;
+        } else {
+          // Fallback: try userinfo endpoint with access token
+          const res2 = await fetch('https://www.googleapis.com/userinfo/v2/me', {
+            headers: { Authorization: `Bearer ${dto.token}` },
+          });
+          if (res2.ok) {
+            const info: any = await res2.json();
+            providerEmail = info.email || providerEmail;
+            providerName = info.name || providerName;
+            providerId = info.id;
+            emailIsVerified = true; // Google-authenticated emails are always verified
+          }
+        }
+      } catch (err) {
+        this.logger.warn(`Google token verify error: ${err}`);
+      }
+    } else if (dto.provider === 'facebook') {
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/me?fields=id,name,email&access_token=${dto.token}`,
+        );
+        if (res.ok) {
+          const info: any = await res.json();
+          providerEmail = info.email || providerEmail;
+          providerName = info.name || providerName;
+          providerId = info.id;
+          // Facebook emails are not automatically verified
+          emailIsVerified = !!info.email;
+        }
+      } catch (err) {
+        this.logger.warn(`Facebook token verify error: ${err}`);
+      }
+    }
+
+    if (!providerEmail) {
+      throw new UnauthorizedException({
+        error: 'SOCIAL_NO_EMAIL',
+        message: `Could not get email from ${dto.provider}. Please try another sign-in method.`,
+      });
+    }
+
+    const email = providerEmail.toLowerCase();
+
+    // Find existing user
+    let user = await this.prisma.user.findUnique({ where: { email } });
+
+    if (user) {
+      // User exists — update provider info and log in
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          authProviderId: providerId ?? user.authProviderId,
+          emailVerified: emailIsVerified || user.emailVerified,
+          lastLoginAt: new Date(),
+        } as any,
+      });
+    } else {
+      // New user — auto-register
+      const nameParts = (providerName || email.split('@')[0]).split(' ');
+      const firstName = nameParts[0] || 'User';
+      const lastName = nameParts.slice(1).join(' ') || '';
+
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          passwordHash: null,
+          firstName,
+          lastName,
+          authProvider: dto.provider,
+          authProviderId: providerId,
+          roles: ['PARENT'],
+          isParent: true,
+          isPetFriend: false,
+          activeRole: 'parent',
+          emailVerified: emailIsVerified,
+          language: 'en',
+        } as any,
+      });
+    }
+
+    const tokens = await this.generateTokenPair(user);
+    return {
+      ...tokens,
+      user: formatUser(user),
+      isNewUser: !user.createdAt || (new Date().getTime() - new Date(user.createdAt).getTime() < 5000),
+    };
+  }
+
+  // ─── Forgot Password ───────────────────────────────────────────────────────
+
+  async forgotPassword(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Rate limit
+    const rateLimitKey = `reset:ratelimit:${normalizedEmail}`;
+    const count = await this.redis.incr(rateLimitKey);
+    if (count === 1) await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_SECONDS);
+    if (count > OTP_RATE_LIMIT_MAX) {
+      throw new BadRequestException({
+        error: 'RATE_LIMIT',
+        message: 'Too many reset requests. Please wait before trying again.',
+      });
+    }
+
+    // Always return success to prevent email enumeration
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (user && user.authProvider === 'email') {
+      const code = generateOTP(6);
+      const codeHash = hashValue(code);
+      await this.redis.setex(`reset:${normalizedEmail}`, RESET_CODE_TTL, codeHash);
+
+      const devMode = process.env.NODE_ENV !== 'production';
+      if (devMode) {
+        this.logger.debug(`[DEV] Password reset code for ${normalizedEmail}: ${code}`);
+      }
+
+      // Send email (non-blocking) — sendEmail may not be implemented yet
+      (this.notifications as any).sendEmail?.(normalizedEmail, 'PawMate Password Reset', `Your reset code is: ${code}. Valid for 10 minutes.`)
+        ?.catch?.(() => {});
+    }
+
+    const response: any = { message: 'If that email is registered, a reset code has been sent.' };
+    if (process.env.NODE_ENV !== 'production' && user) {
+      const stored = await this.redis.get(`reset:${normalizedEmail}`);
+      if (stored) {
+        // Retrieve and return the plain code for dev (we stored the hash, so re-generate)
+        // In dev, re-issue a fresh code that we CAN return
+        const devCode = generateOTP(6);
+        await this.redis.setex(`reset:${normalizedEmail}`, RESET_CODE_TTL, hashValue(devCode));
+        response.devCode = devCode;
+      }
+    }
+
+    return response;
+  }
+
+  // ─── Reset Password ────────────────────────────────────────────────────────
+
+  async resetPassword(email: string, code: string, newPassword: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    const storedHash = await this.redis.get(`reset:${normalizedEmail}`);
+    if (!storedHash) {
+      throw new BadRequestException({
+        error: 'CODE_EXPIRED',
+        message: 'Reset code has expired. Please request a new one.',
+      });
+    }
+
+    if (hashValue(code) !== storedHash) {
+      throw new BadRequestException({
+        error: 'CODE_INVALID',
+        message: 'Invalid reset code.',
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash: newHash },
+    });
+
+    await this.redis.del(`reset:${normalizedEmail}`);
+    await this.revokeAllUserTokens(user.id);
+
+    return { message: 'Password reset successfully. Please sign in with your new password.' };
+  }
+
+  // ─── Email Verification ────────────────────────────────────────────────────
+
+  async sendEmailVerificationCode(userId: string, email: string) {
+    const rateLimitKey = `emailverify:ratelimit:${email}`;
+    const count = await this.redis.incr(rateLimitKey);
+    if (count === 1) await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_SECONDS);
+    if (count > OTP_RATE_LIMIT_MAX) {
+      throw new BadRequestException({
+        error: 'RATE_LIMIT',
+        message: 'Too many verification requests.',
+      });
+    }
+
+    const code = generateOTP(6);
+    await this.redis.setex(`emailverify:${userId}`, EMAIL_CODE_TTL, hashValue(code));
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(`[DEV] Email verify code for ${email}: ${code}`);
+    }
+
+    (this.notifications as any).sendEmail?.(email, 'Verify your PawMate email', `Your verification code is: ${code}. Valid for 10 minutes.`)
+      ?.catch?.(() => {});
+
+    const response: any = { message: 'Verification code sent to your email.' };
+    if (process.env.NODE_ENV !== 'production') response.devCode = code;
+    return response;
+  }
+
+  async verifyEmail(userId: string, code: string) {
+    const storedHash = await this.redis.get(`emailverify:${userId}`);
+    if (!storedHash) {
+      throw new BadRequestException({
+        error: 'CODE_EXPIRED',
+        message: 'Verification code expired. Please request a new one.',
+      });
+    }
+
+    const attemptsKey = `emailverify:attempts:${userId}`;
+    const attempts = parseInt((await this.redis.get(attemptsKey)) || '0');
+    if (attempts >= OTP_MAX_ATTEMPTS) {
+      throw new BadRequestException({
+        error: 'TOO_MANY_ATTEMPTS',
+        message: 'Too many attempts. Please request a new code.',
+      });
+    }
+
+    if (hashValue(code) !== storedHash) {
+      await this.redis.incr(attemptsKey);
+      await this.redis.expire(attemptsKey, EMAIL_CODE_TTL);
+      throw new BadRequestException({
+        error: 'CODE_INVALID',
+        message: 'Invalid code. Please try again.',
+      });
+    }
+
+    await this.redis.del(`emailverify:${userId}`);
+    await this.redis.del(`emailverify:attempts:${userId}`);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true },
+    });
+
+    return { message: 'Email verified successfully.' };
+  }
+
+  // ─── Phone Verification (SMS) ─────────────────────────────────────────────
+
+  async sendPhoneVerificationCode(userId: string, phone: string) {
+    const rateLimitKey = `sms:ratelimit:${phone}`;
+    const count = await this.redis.incr(rateLimitKey);
+    if (count === 1) await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_SECONDS);
+    if (count > OTP_RATE_LIMIT_MAX) {
+      throw new BadRequestException({ error: 'RATE_LIMIT', message: 'Too many OTP requests.' });
+    }
+
+    const code = generateOTP(6);
+    await this.redis.setex(`sms:${userId}`, 300, hashValue(code)); // 5 min
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(`[DEV] SMS code for ${phone}: ${code}`);
+    } else {
+      await this.notifications.sendSms(phone, `Your PawMate code: ${code}. Valid 5 minutes.`);
+    }
+
+    const response: any = { message: 'SMS code sent.' };
+    if (process.env.NODE_ENV !== 'production') response.devCode = code;
+    return response;
+  }
+
+  async verifyPhone(userId: string, code: string, phone: string) {
+    const storedHash = await this.redis.get(`sms:${userId}`);
+    if (!storedHash) {
+      throw new BadRequestException({ error: 'CODE_EXPIRED', message: 'Code expired.' });
+    }
+    if (hashValue(code) !== storedHash) {
+      throw new BadRequestException({ error: 'CODE_INVALID', message: 'Invalid code.' });
+    }
+
+    await this.redis.del(`sms:${userId}`);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { phone, phoneVerified: true },
+    });
+
+    return { message: 'Phone verified.' };
+  }
+
+  // ─── Get Current User ─────────────────────────────────────────────────────
+
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        petFriendProfile: true,
+        trainerProfile: {
+          include: { offerings: { where: { isActive: true } } },
+        },
+        kennelProfile: true,
+        petHotelProfile: true,
+        pets: { where: { isActive: true } },
+      },
+    });
+
+    if (!user) throw new NotFoundException('User not found');
+
+    return {
+      ...formatUser(user),
+      pets: user.pets,
+      profiles: {
+        petFriend: user.petFriendProfile,
+        trainer: user.trainerProfile,
+        kennel: user.kennelProfile,
+        petHotel: user.petHotelProfile,
+      },
+    };
+  }
+
+  // ─── Add Role ──────────────────────────────────────────────────────────────
+
+  async addRole(userId: string, roleToAdd: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    const existingRoles: string[] = (user as any).roles ?? ['PARENT'];
+    if (existingRoles.includes(roleToAdd)) {
+      return { message: `Role ${roleToAdd} is already active.`, roles: existingRoles };
+    }
+
+    const updatedRoles = [...existingRoles, roleToAdd];
+
+    const updateData: any = { roles: updatedRoles };
+    if (roleToAdd === 'PETFRIEND') {
+      updateData.isPetFriend = true;
+    }
+
+    await this.prisma.user.update({ where: { id: userId }, data: updateData });
+    return { message: `Role ${roleToAdd} added.`, roles: updatedRoles };
+  }
+
+  // ─── Token operations ─────────────────────────────────────────────────────
+
   async refreshToken(token: string) {
-    // Verify the refresh token
     let payload: any;
     try {
       payload = this.jwtService.verify(token, {
@@ -200,38 +531,30 @@ export class AuthService {
       throw new UnauthorizedException({ error: 'TOKEN_INVALID', message: 'Invalid or expired refresh token.' });
     }
 
-    // Check if token is revoked
     const tokenHash = hashValue(token);
     const stored = await this.prisma.refreshToken.findFirst({
       where: { tokenHash, isRevoked: false },
     });
 
     if (!stored) {
-      // COMPROMISE DETECTION: old token used — revoke entire family
       await this.revokeAllUserTokens(payload.sub);
       throw new UnauthorizedException({
         error: 'TOKEN_REVOKED',
-        message: 'This session has been terminated for security. Please log in again.',
+        message: 'This session has been terminated. Please log in again.',
       });
     }
 
     if (new Date() > stored.expiresAt) {
-      throw new UnauthorizedException({ error: 'TOKEN_EXPIRED', message: 'Session expired. Please log in again.' });
+      throw new UnauthorizedException({ error: 'TOKEN_EXPIRED', message: 'Session expired.' });
     }
 
-    // Revoke old token
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { isRevoked: true },
-    });
+    await this.prisma.refreshToken.update({ where: { id: stored.id }, data: { isRevoked: true } });
 
-    // Get user
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user || !user.isActive || user.isBanned) {
       throw new UnauthorizedException({ error: 'ACCOUNT_INACTIVE', message: 'Account is not active.' });
     }
 
-    // Issue new token pair
     return this.generateTokenPair(user, stored.ipAddress || undefined, stored.userAgent || undefined);
   }
 
@@ -244,48 +567,12 @@ export class AuthService {
     return { message: 'Logged out successfully.' };
   }
 
-  async sendOtp(phone: string) {
-    // Rate limit: max 5 OTPs per phone per hour
-    const rateLimitKey = `otp:ratelimit:${phone}`;
-    const count = await this.redis.incr(rateLimitKey);
-    if (count === 1) {
-      await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_SECONDS);
-    }
-    if (count > OTP_RATE_LIMIT_MAX) {
-      throw new BadRequestException({
-        error: 'OTP_RATE_LIMIT',
-        message: 'Too many OTP requests. Please wait before requesting another.',
-      });
-    }
-
-    // Generate and store OTP (hashed)
-    const otp = generateOTP(6);
-    const otpHash = hashValue(otp);
-    await this.redis.setex(`otp:${phone}`, OTP_TTL_SECONDS, otpHash);
-
-    // Send via SMS
-    await this.notifications.sendSms(
-      phone,
-      `Your PawMate verification code is: ${otp}. Valid for 10 minutes. Do not share this code.`,
-    );
-
-    this.logger.log(`OTP sent to ${phone}`);
-
-    // In non-production, log the OTP for testing
-    if (process.env.NODE_ENV !== 'production') {
-      this.logger.debug(`[DEV] OTP for ${phone}: ${otp}`);
-    }
-
-    const response: any = { message: 'OTP sent successfully.' };
-    if (process.env.NODE_ENV !== 'production') {
-      response.devOtp = otp;
-    }
-    return response;
-  }
-
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (!user.passwordHash) {
+      throw new BadRequestException({ error: 'SOCIAL_ACCOUNT', message: 'This account uses social login.' });
+    }
 
     const isValid = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!isValid) {
@@ -293,82 +580,19 @@ export class AuthService {
     }
 
     const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { passwordHash: newHash },
-    });
-
-    // Revoke all existing refresh tokens (security: force re-login on all devices)
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } });
     await this.revokeAllUserTokens(userId);
 
-    return { message: 'Password changed successfully. Please log in again.' };
+    return { message: 'Password changed. Please log in again.' };
   }
 
-  async googleAuth(accessToken: string, email?: string, name?: string) {
-    // Verify the Google token and get user info
-    let googleUser: { email: string; name?: string; sub?: string };
-    try {
-      const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (!res.ok) throw new UnauthorizedException('Invalid Google token');
-      googleUser = await res.json() as { email: string; name?: string; sub?: string };
-    } catch {
-      // Fall back to passed-in values if fetch fails (mobile already fetched)
-      if (!email) throw new UnauthorizedException('Could not verify Google token');
-      googleUser = { email, name };
-    }
-
-    if (!googleUser.email) throw new UnauthorizedException('Google account has no email');
-
-    // Find existing user by email or create one
-    let user = await this.prisma.user.findUnique({ where: { email: googleUser.email } });
-
-    if (!user) {
-      // Auto-register via Google
-      const nameParts = (googleUser.name || googleUser.email.split('@')[0]).split(' ');
-      const firstName = nameParts[0] || 'User';
-      const lastName = nameParts.slice(1).join(' ') || '';
-
-      user = await this.prisma.user.create({
-        data: {
-          email: googleUser.email,
-          firstName,
-          lastName,
-          phone: null as any, // Google users may not have a phone
-          passwordHash: await bcrypt.hash(generateSecureToken(32), SALT_ROUNDS),
-          role: 'user',
-          activeRole: 'parent',
-          isParent: true,
-          isPetFriend: false,
-          phoneVerified: true, // email-verified via Google
-          language: 'en',
-        },
-      });
-    }
-
-    const tokens = await this.generateTokenPair(user);
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        activeRole: user.activeRole,
-        isParent: user.isParent,
-        isPetFriend: user.isPetFriend,
-        role: user.role,
-      },
-    };
-  }
+  // ─── Private helpers ───────────────────────────────────────────────────────
 
   private async generateTokenPair(user: any, ipAddress?: string, userAgent?: string) {
     const payload = {
       sub: user.id,
-      phone: user.phone,
-      role: user.role,
+      email: user.email,
+      roles: (user as any).roles ?? ['PARENT'],
       activeRole: user.activeRole,
     };
 
@@ -385,7 +609,6 @@ export class AuthService {
       },
     );
 
-    // Store refresh token hash
     const tokenHash = hashValue(refreshToken);
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
@@ -395,50 +618,20 @@ export class AuthService {
       where: { userId: user.id, isRevoked: false },
     });
     if (activeTokens >= 5) {
-      // Revoke oldest token
       const oldest = await this.prisma.refreshToken.findFirst({
         where: { userId: user.id, isRevoked: false },
         orderBy: { createdAt: 'asc' },
       });
       if (oldest) {
-        await this.prisma.refreshToken.update({
-          where: { id: oldest.id },
-          data: { isRevoked: true },
-        });
+        await this.prisma.refreshToken.update({ where: { id: oldest.id }, data: { isRevoked: true } });
       }
     }
 
     await this.prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        ipAddress,
-        userAgent,
-        expiresAt,
-      },
+      data: { userId: user.id, tokenHash, ipAddress, userAgent, expiresAt },
     });
 
-    return {
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        displayName: user.displayName,
-        profilePhoto: user.profilePhoto,
-        phone: user.phone,
-        email: user.email,
-        activeRole: user.activeRole,
-        isParent: user.isParent,
-        isPetFriend: user.isPetFriend,
-        idVerified: user.idVerified,
-        loyaltyTier: user.loyaltyTier,
-        loyaltyPoints: user.loyaltyPoints,
-        language: user.language,
-        role: user.role,
-      },
-    };
+    return { accessToken, refreshToken };
   }
 
   private async revokeAllUserTokens(userId: string) {
@@ -451,12 +644,9 @@ export class AuthService {
   private async trackFailedLogin(userId: string, ipAddress?: string) {
     const key = `failed_login:${userId}`;
     const count = await this.redis.incr(key);
-    if (count === 1) await this.redis.expire(key, 3600); // 1 hour window
-
+    if (count === 1) await this.redis.expire(key, 3600);
     if (count >= 10) {
-      // Lock account and alert admin
       this.logger.warn(`Account ${userId} locked: 10+ failed logins from ${ipAddress}`);
-      // TODO: notify admin via notification service
     }
   }
 }

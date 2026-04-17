@@ -449,9 +449,9 @@ enum HomeType {
 
 model User {
   id           String   @id @default(uuid())
-  phone        String   @unique
-  email        String?  @unique
-  passwordHash String
+  phone        String?  @unique  // optional — email-first auth; phone added later for SMS verify
+  email        String   @unique  // required — primary identifier
+  passwordHash String?           // null for social-login users (Google/Facebook)
   firstName    String
   lastName     String
   displayName  String?
@@ -460,7 +460,15 @@ model User {
   gender       Gender?
   role         UserRole @default(user)
 
-  // Dual role — "Parent" is the demand side, "PetFriend" is supply side
+  // Auth provider tracking
+  authProvider   String  @default("email")  // "email" | "google" | "facebook"
+  authProviderId String?                    // social provider's user ID
+
+  // Multi-role system — array of active roles for this user
+  // Values: "PARENT" | "PETFRIEND" | "TRAINER" | "KENNEL" | "PETHOTEL" | "SHOP" | "GROOMER" | "VET"
+  roles          String[] @default(["PARENT"])
+
+  // Legacy role flags — kept for backward compatibility with existing code
   isParent       Boolean    @default(true)   // was: isOwner
   isPetFriend    Boolean    @default(false)  // was: isSitter
   activeRole     ActiveRole @default(parent) // was: owner
@@ -481,8 +489,8 @@ model User {
   idReviewees     User[]    @relation("IdReviewer")
 
   // Email + phone verification
-  emailVerified Boolean   @default(false)
-  phoneVerified Boolean   @default(true)
+  emailVerified Boolean   @default(false)  // set true after email code verified or via Google/Facebook
+  phoneVerified Boolean   @default(false)  // set true after SMS OTP verified
 
   // Status
   isActive      Boolean   @default(true)
