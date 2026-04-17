@@ -8,6 +8,28 @@ import { SearchService } from './search.service';
 export class SearchController {
   constructor(private searchService: SearchService) {}
 
+  @Get('sitters/nearby')
+  findNearbySitters(
+    @Query('lat') lat: string,
+    @Query('lng') lng: string,
+    @Query('radius') radius?: string,
+    @Query('serviceType') serviceType?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const parsedLat = +lat;
+    const parsedLng = +lng;
+    if (!lat || !lng || isNaN(parsedLat) || isNaN(parsedLng)) {
+      throw new BadRequestException('lat and lng query parameters are required.');
+    }
+    return this.searchService.findNearbySitters({
+      lat: parsedLat,
+      lng: parsedLng,
+      radiusKm: radius ? +radius : 10,
+      serviceType,
+      limit: limit ? +limit : 20,
+    });
+  }
+
   @Get('sitters')
   searchSitters(
     @Query('lat') lat: string,

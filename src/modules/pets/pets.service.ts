@@ -47,8 +47,14 @@ export class PetsService {
   }
 
   async create(ownerId: string, data: any) {
+    // Normalize birthDate → dateOfBirth (mobile may send either field name)
+    const normalized = { ...data };
+    if (!normalized.dateOfBirth && normalized.birthDate) {
+      normalized.dateOfBirth = normalized.birthDate;
+    }
+    delete normalized.birthDate;
     return this.prisma.pet.create({
-      data: { ...data, ownerId },
+      data: { ...normalized, ownerId },
     });
   }
 

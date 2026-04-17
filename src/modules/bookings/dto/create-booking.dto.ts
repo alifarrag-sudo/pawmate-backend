@@ -16,7 +16,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export class CreateBookingDto {
   @ApiProperty({ description: 'Sitter user ID' })
   @IsUUID()
-  sitterId: string;
+  petFriendId: string;
 
   @ApiProperty({ enum: ['dog_walking', 'drop_in', 'daycare', 'overnight_boarding', 'house_sitting'] })
   @IsEnum(['dog_walking', 'drop_in', 'daycare', 'overnight_boarding', 'house_sitting'])

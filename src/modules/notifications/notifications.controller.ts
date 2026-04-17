@@ -1,4 +1,4 @@
-import { Controller, UseGuards, Get, Post, Query, Request } from '@nestjs/common';
+import { Controller, UseGuards, Get, Patch, Query, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
@@ -15,7 +15,7 @@ export class NotificationsController {
     return this.notificationsService.getNotifications(req.user?.id, page ? +page : 1);
   }
 
-  @Post('read-all')
+  @Patch('read-all')
   markAllAsRead(@Request() req: any) {
     return this.notificationsService.markAllAsRead(req.user?.id);
   }

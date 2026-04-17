@@ -5,9 +5,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class ReviewsService {
   constructor(private prisma: PrismaService) {}
 
-  async getReviewsForSitter(sitterId: string) {
+  async getReviewsForSitter(petFriendId: string) {
     return this.prisma.review.findMany({
-      where: { revieweeId: sitterId, isPublished: true },
+      where: { revieweeId: petFriendId, isPublished: true },
       include: { reviewer: { select: { firstName: true, lastName: true, profilePhoto: true } } },
       orderBy: { submittedAt: 'desc' },
     });
@@ -17,19 +17,19 @@ export class ReviewsService {
     reviewerId: string,
     data: {
       bookingId: string;
-      sitterId: string;
+      petFriendId: string;
       rating: number;
       comment?: string;
       serviceType?: string;
     },
   ) {
     if (!data.bookingId) throw new BadRequestException('bookingId is required');
-    if (!data.sitterId) throw new BadRequestException('sitterId is required');
+    if (!data.petFriendId) throw new BadRequestException('petFriendId is required');
     if (!data.rating || data.rating < 1 || data.rating > 5) throw new BadRequestException('rating must be between 1 and 5');
 
     // Verify booking belongs to reviewer and is completed
     const booking = await this.prisma.booking.findFirst({
-      where: { id: data.bookingId, ownerId: reviewerId, status: 'completed' },
+      where: { id: data.bookingId, parentId: reviewerId, status: 'completed' },
     });
     if (!booking) throw new BadRequestException('Can only review completed bookings you own');
 
@@ -41,8 +41,8 @@ export class ReviewsService {
       data: {
         bookingId: data.bookingId,
         reviewerId,
-        revieweeId: data.sitterId,
-        revieweeType: 'sitter',
+        revieweeId: data.petFriendId,
+        revieweeType: 'petfriend',
         overallRating: data.rating,
         comment: data.comment ?? '',
         isPublished: true,
@@ -52,18 +52,18 @@ export class ReviewsService {
 
     // Update sitter avg rating
     const reviews = await this.prisma.review.findMany({
-      where: { revieweeId: data.sitterId, isPublished: true },
+      where: { revieweeId: data.petFriendId, isPublished: true },
     });
     const avg = reviews.reduce((s, r) => s + Number(r.overallRating), 0) / reviews.length;
-    await this.prisma.sitterProfile.updateMany({
-      where: { userId: data.sitterId },
+    await this.prisma.petFriendProfile.updateMany({
+      where: { userId: data.petFriendId },
       data: { avgRating: avg, totalReviews: reviews.length },
     });
 
     // Mark booking as reviewed
     await this.prisma.booking.update({
       where: { id: data.bookingId },
-      data: { ownerReviewed: true },
+      data: { parentReviewed: true },
     });
 
     return review;

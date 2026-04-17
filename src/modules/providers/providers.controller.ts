@@ -5,6 +5,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ProvidersService } from './providers.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('providers')
 @ApiBearerAuth()
@@ -30,11 +31,13 @@ export class ProvidersController {
     return this.providersService.updateProfile(req.user?.id, body);
   }
 
+  @Public()
   @Get()
   listByType(@Query('type') type: string, @Query('city') city?: string) {
     return this.providersService.listByType(type, city);
   }
 
+  @Public()
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.providersService.getById(id);

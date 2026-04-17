@@ -1,12 +1,16 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymobService } from './paymob.service';
 import { NotificationsService } from '../notifications/notifications.service';
+
+const TEST_PAYMENT_METHODS = ['test', 'card_test', 'mock'];
 
 @Injectable()
 export class PaymentsService {
@@ -39,21 +43,19 @@ export class PaymentsService {
   async authorizePayment(bookingId: string): Promise<void> {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
-      include: { owner: true },
+      include: { parent: true },
     });
 
     if (!booking) return;
 
-    // Idempotency check
     const idempotencyKey = `auth:${bookingId}`;
     const alreadyProcessed = await this.checkIdempotency(idempotencyKey);
     if (alreadyProcessed) return;
 
     try {
       if (booking.paymentMethod === 'platform_wallet') {
-        // Check wallet balance
         const owner = await this.prisma.user.findUnique({
-          where: { id: booking.ownerId },
+          where: { id: booking.parentId },
           select: { walletBalance: true },
         });
 
@@ -66,9 +68,8 @@ export class PaymentsService {
           return;
         }
 
-        // Soft reserve from wallet
         await this.prisma.user.update({
-          where: { id: booking.ownerId },
+          where: { id: booking.parentId },
           data: { walletBalance: { decrement: Number(booking.totalPrice) } },
         });
 
@@ -77,14 +78,13 @@ export class PaymentsService {
           data: { paymentStatus: 'authorized', paymentAuthorizedAt: new Date() },
         });
       } else {
-        // Paymob authorization
         const result = await this.paymob.authorizePayment({
           amountCents: Math.round(Number(booking.totalPrice) * 100),
           currency: 'EGP',
           orderId: bookingId,
-          customerFirstName: booking.owner.firstName,
-          customerLastName: booking.owner.lastName,
-          customerPhone: booking.owner.phone,
+          customerFirstName: booking.parent.firstName,
+          customerLastName: booking.parent.lastName,
+          customerPhone: booking.parent.phone,
         });
 
         await this.prisma.booking.update({
@@ -100,7 +100,7 @@ export class PaymentsService {
       this.logger.error(`Payment authorization failed for booking ${bookingId}: ${error.message}`);
       await this.prisma.paymentTransaction.create({
         data: {
-          userId: booking.ownerId,
+          userId: booking.parentId,
           bookingId,
           type: 'booking_payment',
           amount: Number(booking.totalPrice),
@@ -130,7 +130,6 @@ export class PaymentsService {
 
     try {
       if (booking.paymentMethod === 'platform_wallet') {
-        // Already deducted from wallet at authorization
         await this.prisma.booking.update({
           where: { id: bookingId },
           data: { paymentStatus: 'captured', paymentCapturedAt: new Date() },
@@ -150,10 +149,9 @@ export class PaymentsService {
         });
       }
 
-      // Log transaction
       await this.prisma.paymentTransaction.create({
         data: {
-          userId: booking.ownerId,
+          userId: booking.parentId,
           bookingId,
           type: 'booking_payment',
           amount: Number(booking.totalPrice),
@@ -164,9 +162,6 @@ export class PaymentsService {
           processedAt: new Date(),
         },
       });
-
-      // Schedule sitter payout in 24 hours
-      // TODO: schedule sitter payout (requires Redis/Bull)
 
       this.logger.log(`Payment captured for booking ${bookingId}`);
     } catch (error: any) {
@@ -203,8 +198,7 @@ export class PaymentsService {
     } else {
       ownerRefundPercent = 100;
       sitterCompensationPercent = 0;
-      // Add platform credit as apology
-      await this.addPlatformCredit(booking.ownerId, 50, 'sitter_cancellation_apology', bookingId);
+      await this.addPlatformCredit(booking.parentId, 50, 'sitter_cancellation_apology', bookingId);
     }
 
     const ownerRefundAmount = Number(booking.totalPrice) * ownerRefundPercent / 100;
@@ -214,7 +208,6 @@ export class PaymentsService {
       if (ownerRefundPercent === 100) {
         await this.paymob.voidAuthorization(booking.paymentReference!);
       } else if (ownerRefundPercent < 100) {
-        // Capture then partial refund
         const captureAmount = Math.round(Number(booking.totalPrice) * 100);
         await this.paymob.capturePayment(booking.paymentReference!, captureAmount);
         if (ownerRefundAmount > 0) {
@@ -236,16 +229,16 @@ export class PaymentsService {
     });
 
     if (sitterCompensation > 0) {
-      await this.prisma.sitterPayout.create({
+      await this.prisma.petFriendPayout.create({
         data: {
-          sitterId: booking.sitterId,
+          petFriendId: booking.petFriendId,
           bookingId,
           amount: sitterCompensation,
           payoutMethod: 'platform_wallet',
           status: 'pending',
         },
       });
-      await this.addPlatformCredit(booking.sitterId, sitterCompensation, 'cancellation_compensation', bookingId);
+      await this.addPlatformCredit(booking.petFriendId, sitterCompensation, 'cancellation_compensation', bookingId);
     }
 
     this.logger.log(`Refund processed for booking ${bookingId}: owner ${ownerRefundPercent}%, sitter ${sitterCompensationPercent}%`);
@@ -298,13 +291,26 @@ export class PaymentsService {
     const { obj } = body;
     const transactionId = obj?.id?.toString();
     const success = obj?.success;
-    const pending = obj?.pending;
     const orderId = obj?.order?.merchant_order_id;
 
     this.logger.log(`Paymob webhook: transaction ${transactionId}, orderId ${orderId}, success=${success}`);
 
+    // FIX 5: Deduplicate webhook events atomically via unique constraint
+    if (transactionId) {
+      try {
+        await this.prisma.processedWebhookEvent.create({
+          data: { eventId: transactionId, provider: 'paymob' },
+        });
+      } catch (e: any) {
+        if (e.code === 'P2002') {
+          this.logger.log(`Webhook event ${transactionId} already processed — skipping.`);
+          return;
+        }
+        throw e;
+      }
+    }
+
     if (orderId && success) {
-      // Update booking payment status
       const booking = await this.prisma.booking.findUnique({ where: { id: orderId } });
       if (booking && booking.paymentStatus === 'pending') {
         await this.prisma.booking.update({
@@ -332,29 +338,58 @@ export class PaymentsService {
     return { transactions };
   }
 
-  async topUpWallet(userId: string, amount: number) {
+  async topUpWallet(userId: string, amount: number, paymentMethod?: string) {
+    // FIX 2: Block test payment methods in production
+    if (
+      paymentMethod &&
+      TEST_PAYMENT_METHODS.includes(paymentMethod) &&
+      process.env.NODE_ENV === 'production'
+    ) {
+      throw new ForbiddenException('Test payment methods are not available in production.');
+    }
+
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: { walletBalance: { increment: amount } },
       select: { walletBalance: true },
     });
-    await this.prisma.paymentTransaction.create({
-      data: {
-        userId,
-        type: 'top_up',
-        amount,
-        direction: 'credit',
-        status: 'success',
-        gateway: 'platform',
-        processedAt: new Date(),
-      },
-    });
+
+    // FIX 5: Catch P2002 for idempotency on duplicate transactions
+    try {
+      await this.prisma.paymentTransaction.create({
+        data: {
+          userId,
+          type: 'top_up',
+          amount,
+          direction: 'credit',
+          status: 'success',
+          gateway: 'platform',
+          processedAt: new Date(),
+        },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        throw new ConflictException('This payment has already been processed.');
+      }
+      throw error;
+    }
+
     return { balance: Number(user.walletBalance), message: 'Wallet topped up successfully' };
   }
 
-  async getPayoutHistory(userId: string) {
-    const payouts = await this.prisma.sitterPayout.findMany({
-      where: { sitterId: userId },
+  async getPayoutHistory(requestingUserId: string, petFriendId: string) {
+    // FIX 9: Verify the requesting user owns this sitter profile
+    const sitter = await this.prisma.petFriendProfile.findFirst({
+      where: { userId: petFriendId },
+      select: { id: true, userId: true },
+    });
+
+    if (!sitter || sitter.userId !== requestingUserId) {
+      throw new ForbiddenException('You do not have permission to view this payout history.');
+    }
+
+    const payouts = await this.prisma.petFriendPayout.findMany({
+      where: { petFriendId },
       orderBy: { createdAt: 'desc' },
     });
     return { payouts };
@@ -369,21 +404,19 @@ export class PaymentsService {
     if (amount < 50) throw new BadRequestException('Minimum withdrawal is 50 EGP.');
     if (amount > balance) throw new BadRequestException('Insufficient wallet balance.');
 
-    // Map mobile method name to PayoutMethod enum
     const payoutMethod = method === 'bank_transfer' ? 'bank_transfer'
       : method === 'vodafone_cash' ? 'vodafone_cash'
       : 'platform_wallet';
 
-    const payout = await this.prisma.sitterPayout.create({
+    const payout = await this.prisma.petFriendPayout.create({
       data: {
-        sitterId: userId,
+        petFriendId: userId,
         amount,
         payoutMethod: payoutMethod as any,
         status: 'pending',
       },
     });
 
-    // Deduct from wallet
     await this.prisma.user.update({
       where: { id: userId },
       data: { walletBalance: { decrement: amount } },

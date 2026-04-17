@@ -9,12 +9,27 @@ export class ProvidersService {
 
   // ─── PROVIDER PROFILES ──────────────────────────────────────────────────
 
+  private normalizeProviderInput(data: any) {
+    const mapped: any = { ...data };
+    // Mobile sends 'type' but schema field is 'providerType'
+    if ('type' in mapped && !('providerType' in mapped)) {
+      mapped.providerType = mapped.type;
+    }
+    delete mapped.type;
+    // Mobile may send 'district' — store as city (ProviderProfile has no district field)
+    if ('district' in mapped && !('city' in mapped)) {
+      mapped.city = mapped.district;
+    }
+    delete mapped.district;
+    return mapped;
+  }
+
   async createProfile(userId: string, data: any) {
     const existing = await this.prisma.providerProfile.findUnique({ where: { userId } });
     if (existing) throw new ConflictException('You already have a provider profile.');
 
     return this.prisma.providerProfile.create({
-      data: { ...data, userId },
+      data: { ...this.normalizeProviderInput(data), userId },
     });
   }
 
@@ -30,7 +45,7 @@ export class ProvidersService {
   async updateProfile(userId: string, data: any) {
     const profile = await this.prisma.providerProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Provider profile not found.');
-    return this.prisma.providerProfile.update({ where: { userId }, data });
+    return this.prisma.providerProfile.update({ where: { userId }, data: this.normalizeProviderInput(data) });
   }
 
   async getById(id: string) {
@@ -144,6 +159,7 @@ export class ProvidersService {
         totalAmount,
         platformFee,
         sellerEarning,
+        status: 'pending',
         deliveryType: data.deliveryType as any,
         deliveryAddress: data.deliveryAddress,
         notes: data.notes,

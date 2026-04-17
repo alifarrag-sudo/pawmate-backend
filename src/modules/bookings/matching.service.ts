@@ -28,11 +28,11 @@ export class MatchingService {
     private eventEmitter: EventEmitter2,
   ) {}
 
-  async checkSitterAvailability(sitterId: string, start: Date, end: Date): Promise<boolean> {
+  async checkSitterAvailability(petFriendId: string, start: Date, end: Date): Promise<boolean> {
     // 1. Check for conflicting bookings in DB
     const conflict = await this.prisma.booking.findFirst({
       where: {
-        sitterId,
+        petFriendId,
         status: { in: ['accepted', 'active'] },
         requestedStart: { lt: end },
         requestedEnd: { gt: start },
@@ -41,8 +41,8 @@ export class MatchingService {
     if (conflict) return false;
 
     // 2. Check if sitter is on holiday
-    const profile = await this.prisma.sitterProfile.findUnique({
-      where: { userId: sitterId },
+    const profile = await this.prisma.petFriendProfile.findUnique({
+      where: { userId: petFriendId },
       select: { isOnHoliday: true, holidayEndDate: true, isActive: true },
     });
     if (!profile?.isActive) return false;
@@ -55,9 +55,9 @@ export class MatchingService {
 
     // Check date override first
     const dateStr = start.toISOString().split('T')[0];
-    const override = await this.prisma.sitterAvailabilityOverride.findFirst({
+    const override = await this.prisma.petFriendAvailabilityOverride.findFirst({
       where: {
-        sitterId: (await this.prisma.sitterProfile.findUnique({ where: { userId: sitterId }, select: { id: true } }))?.id,
+        petFriendId: (await this.prisma.petFriendProfile.findUnique({ where: { userId: petFriendId }, select: { id: true } }))?.id,
         overrideDate: new Date(dateStr),
       },
     });
@@ -71,14 +71,15 @@ export class MatchingService {
     }
 
     // Check weekly template
-    const sitterProfileRecord = await this.prisma.sitterProfile.findUnique({ where: { userId: sitterId }, select: { id: true } });
+    const sitterProfileRecord = await this.prisma.petFriendProfile.findUnique({ where: { userId: petFriendId }, select: { id: true } });
     if (!sitterProfileRecord) return false;
 
-    const template = await this.prisma.sitterAvailabilityTemplate.findFirst({
-      where: { sitterId: sitterProfileRecord.id, dayOfWeek },
+    const template = await this.prisma.petFriendAvailabilityTemplate.findFirst({
+      where: { petFriendId: sitterProfileRecord.id, dayOfWeek },
     });
 
-    if (!template) return false;
+    // No template = sitter hasn't set restrictions yet → available by default
+    if (!template) return true;
     return startTime >= template.startTime && endTime <= template.endTime;
   }
 
@@ -169,7 +170,7 @@ export class MatchingService {
       where: { id: bookingId },
       include: {
         pets: { include: { pet: true } },
-        owner: { select: { id: true } },
+        parent: { select: { id: true } },
       },
     });
 
@@ -179,20 +180,20 @@ export class MatchingService {
     }
 
     const routingHistory = (booking.routingHistory as any[]) || [];
-    const triedSitterIds = routingHistory.map((h: any) => h.sitterId);
+    const triedSitterIds = routingHistory.map((h: any) => h.petFriendId);
 
     if (routingHistory.length >= 10) {
       // Exhausted attempts
       await this.prisma.booking.update({
         where: { id: bookingId },
-        data: { status: 'no_sitters_available' },
+        data: { status: 'no_providers_available' },
       });
       this.eventEmitter.emit('booking.noSittersAvailable', { booking });
       return;
     }
 
     // Get next best candidate (excluding already-tried sitters)
-    const petTypes = [...new Set(booking.pets.map((bp) => bp.pet.species))];
+    const petTypes = [...new Set(booking.pets.map((bp) => bp.pet.species as string))];
     const petSizes = [...new Set(booking.pets.map((bp) => bp.pet.weightCategory).filter(Boolean))];
 
     const candidates = await this.findCandidatesForBooking(
@@ -214,7 +215,7 @@ export class MatchingService {
       // No more candidates
       await this.prisma.booking.update({
         where: { id: bookingId },
-        data: { status: 'no_sitters_available' },
+        data: { status: 'no_providers_available' },
       });
       this.eventEmitter.emit('booking.noSittersAvailable', { booking });
       return;
@@ -224,7 +225,7 @@ export class MatchingService {
     await this.prisma.booking.update({
       where: { id: bookingId },
       data: {
-        sitterId: nextSitter.userId,
+        petFriendId: nextSitter.userId,
         routingAttempt: { increment: 1 },
       },
     });

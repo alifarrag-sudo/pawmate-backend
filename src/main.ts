@@ -26,12 +26,21 @@ async function bootstrap() {
     }),
   );
 
-  // CORS — allow mobile app and web clients
+  // CORS — allow specific origins; mobile apps send no origin so they always pass
+  const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : ['http://localhost:3000', 'http://localhost:19006'];
+
   app.enableCors({
-    origin: true, // Mobile apps don't have an "origin" — always allow
+    origin: (origin, callback) => {
+      // No origin = mobile app, Postman, server-to-server — always allow
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      callback(new Error(`CORS: Origin ${origin} not allowed`));
+    },
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true,
   });
 
   // API versioning
@@ -90,11 +99,7 @@ async function bootstrap() {
     console.log(`📚 Swagger docs available at: http://localhost:${process.env.PORT || 3000}/api/docs`);
   }
 
-  // Simple health endpoint (before global prefix so it's at /health)
-  const httpAdapter = app.getHttpAdapter();
-  httpAdapter.get('/api/health', (_req: any, res: any) => {
-    res.status(200).json({ status: 'ok', version: 'v14-with-jwt-guard', timestamp: new Date().toISOString() });
-  });
+  // Health endpoint served by HealthController at GET /api/v1/health
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');

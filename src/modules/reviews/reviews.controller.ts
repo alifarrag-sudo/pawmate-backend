@@ -16,7 +16,7 @@ export class ReviewsController {
     @Body()
     body: {
       bookingId: string;
-      sitterId: string;
+      petFriendId: string;
       rating: number;
       comment?: string;
       serviceType?: string;
@@ -30,8 +30,8 @@ export class ReviewsController {
     return this.reviewsService.getMyReviews(req.user?.id);
   }
 
-  @Get('sitter/:sitterId')
-  getSitterReviews(@Param('sitterId') sitterId: string) {
-    return this.reviewsService.getReviewsForSitter(sitterId);
+  @Get('sitter/:petFriendId')
+  getSitterReviews(@Param('petFriendId') petFriendId: string) {
+    return this.reviewsService.getReviewsForSitter(petFriendId);
   }
 }

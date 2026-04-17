@@ -4,6 +4,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { FoodService } from './food.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('food')
 @ApiBearerAuth()
@@ -29,6 +30,7 @@ export class FoodController {
     return this.foodService.updateMySellerProfile(req.user?.id, body);
   }
 
+  @Public()
   @Get('sellers')
   listSellers(
     @Query('district') district?: string,
@@ -38,6 +40,7 @@ export class FoodController {
     return this.foodService.listSellers({ district, search, page: page ? +page : 1 });
   }
 
+  @Public()
   @Get('sellers/:id')
   getSellerById(@Param('id') id: string) {
     return this.foodService.getSellerById(id);
@@ -50,6 +53,7 @@ export class FoodController {
     return this.foodService.createProduct(req.user?.id, body);
   }
 
+  @Public()
   @Get('products')
   listProducts(
     @Query('targetAnimal') targetAnimal?: string,
@@ -66,11 +70,13 @@ export class FoodController {
     return this.foodService.getMyProducts(req.user?.id);
   }
 
+  @Public()
   @Get('products/:id')
   getProductById(@Param('id') id: string) {
     return this.foodService.getProductById(id);
   }
 
+  @Public()
   @Get('products/:id/reviews')
   getProductReviews(@Param('id') id: string) {
     return this.foodService.getProductReviews(id);

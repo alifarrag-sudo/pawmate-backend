@@ -51,9 +51,9 @@ export class NotificationsService {
   }
 
   @OnEvent('booking.accepted')
-  async onBookingAccepted({ booking, sitterId }: any) {
+  async onBookingAccepted({ booking, petFriendId }: any) {
     const sitter = await this.prisma.user.findUnique({
-      where: { id: sitterId },
+      where: { id: petFriendId },
       select: { firstName: true, lastName: true },
     });
     const name = sitter ? `${sitter.firstName} ${sitter.lastName.charAt(0)}.` : 'Your sitter';
@@ -68,7 +68,7 @@ export class NotificationsService {
   }
 
   @OnEvent('booking.declined')
-  async onBookingDeclined({ booking, sitterId }: any) {
+  async onBookingDeclined({ booking, petFriendId }: any) {
     // Don't notify owner here — MatchingService will route to next sitter
     // Owner only notified if no sitters available
   }
@@ -102,7 +102,7 @@ export class NotificationsService {
 
   @OnEvent('booking.cancelled')
   async onBookingCancelled({ booking, cancelledBy, cancellationType }: any) {
-    const notifyUserId = cancelledBy === 'owner' ? booking.sitterId : booking.ownerId;
+    const notifyUserId = cancelledBy === 'owner' ? booking.petFriendId : booking.ownerId;
     const message = cancelledBy === 'owner'
       ? 'The owner has cancelled this booking.'
       : 'The sitter has cancelled this booking. You will receive a full refund.';

@@ -15,7 +15,7 @@ export class OffersController {
   /** Owner creates a new price offer to a sitter */
   @Post()
   createOffer(@Request() req: any, @Body() body: {
-    sitterId: string;
+    petFriendId: string;
     service: string;
     ownerPrice: number;
     message?: string;

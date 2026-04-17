@@ -4,6 +4,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { AdoptionService } from './adoption.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('adoption')
 @ApiBearerAuth()
@@ -17,6 +18,7 @@ export class AdoptionController {
     return this.adoptionService.createPost(req.user?.id, body);
   }
 
+  @Public()
   @Get()
   list(
     @Query('species') species?: string,
@@ -38,6 +40,7 @@ export class AdoptionController {
     return this.adoptionService.getMyThreads(req.user?.id);
   }
 
+  @Public()
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.adoptionService.getById(id);

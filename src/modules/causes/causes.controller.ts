@@ -4,6 +4,7 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CausesService } from './causes.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('causes')
 @ApiBearerAuth()
@@ -17,6 +18,7 @@ export class CausesController {
     return this.causesService.create(req.user?.id, body);
   }
 
+  @Public()
   @Get()
   list(
     @Query('category') category?: string,
@@ -60,6 +62,7 @@ export class CausesController {
     return this.causesService.adminRejectWithdrawal(req.user?.id, wid, notes);
   }
 
+  @Public()
   @Get(':id')
   getById(@Param('id') id: string) {
     return this.causesService.getById(id);
@@ -75,6 +78,7 @@ export class CausesController {
     return this.causesService.donate(req.user?.id, id, body);
   }
 
+  @Public()
   @Get(':id/donors')
   getDonors(@Param('id') id: string, @Query('page') page?: string) {
     return this.causesService.getDonors(id, page ? +page : 1);
@@ -85,6 +89,7 @@ export class CausesController {
     return this.causesService.postUpdate(req.user?.id, id, body);
   }
 
+  @Public()
   @Get(':id/updates')
   getUpdates(@Param('id') id: string) {
     return this.causesService.getUpdates(id);

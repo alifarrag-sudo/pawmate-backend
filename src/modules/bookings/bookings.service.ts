@@ -60,14 +60,14 @@ export class BookingsService {
 
     // 3. Self-booking check is done after we resolve the profile (below)
 
-    // 4. Get sitter profile — sitterId can be either profileId or userId
-    let sitterProfile = await this.prisma.sitterProfile.findUnique({
-      where: { id: dto.sitterId },
+    // 4. Get sitter profile — petFriendId can be either profileId or userId
+    let sitterProfile = await this.prisma.petFriendProfile.findUnique({
+      where: { id: dto.petFriendId },
       include: { user: true },
     });
     if (!sitterProfile) {
-      sitterProfile = await this.prisma.sitterProfile.findUnique({
-        where: { userId: dto.sitterId },
+      sitterProfile = await this.prisma.petFriendProfile.findUnique({
+        where: { userId: dto.petFriendId },
         include: { user: true },
       });
     }
@@ -88,7 +88,7 @@ export class BookingsService {
     }
 
     // 5. Check sitter offers the requested service
-    if (!sitterProfile.services.includes(dto.serviceType)) {
+    if (!(sitterProfile as any).services?.includes(dto.serviceType)) {
       throw new BadRequestException({
         error: 'SERVICE_NOT_OFFERED',
         message: `This sitter does not offer ${dto.serviceType} service.`,
@@ -96,10 +96,10 @@ export class BookingsService {
     }
 
     // 6. Check max pets
-    if (pets.length > sitterProfile.maxPetsPerBooking) {
+    if ((sitterProfile as any).maxPetsPerBooking && pets.length > (sitterProfile as any).maxPetsPerBooking) {
       throw new BadRequestException({
         error: 'TOO_MANY_PETS',
-        message: `This sitter accepts maximum ${sitterProfile.maxPetsPerBooking} pets per booking.`,
+        message: `This sitter accepts maximum ${(sitterProfile as any).maxPetsPerBooking} pets per booking.`,
       });
     }
 
@@ -127,7 +127,7 @@ export class BookingsService {
       startTime: start,
       endTime: end,
       petCount: pets.length,
-      sitterProfile,
+      sitterProfile: sitterProfile as any,
     });
 
     // 10. Create pet snapshots (frozen pet data)
@@ -143,8 +143,8 @@ export class BookingsService {
     // 11. Create booking — use connect pattern to satisfy Prisma's BookingCreateInput type
     const booking = await this.prisma.booking.create({
       data: {
-        owner: { connect: { id: ownerId } },
-        sitter: { connect: { id: sitterProfile.userId } },
+        parent: { connect: { id: ownerId } },
+        petFriend: { connect: { id: sitterProfile.userId } },
         bookingType: dto.bookingType,
         serviceType: dto.serviceType as any,
         status: 'pending',
@@ -158,7 +158,7 @@ export class BookingsService {
         commissionRate: pricing.commissionRate,
         commissionAmount: pricing.commissionAmount,
         totalPrice: pricing.totalPrice,
-        sitterPayout: pricing.sitterPayout,
+        providerPayout: pricing.sitterPayout,
         paymentMethod: dto.paymentMethod as any,
         specialInstructions: dto.specialInstructions,
         petSnapshot: petSnapshots,
@@ -175,7 +175,7 @@ export class BookingsService {
     // 13. Schedule timeout (10 minutes to accept)
     await this.scheduleBookingTimeout(booking.id, 10 * 60);
 
-    this.logger.log(`Booking ${booking.id} created by owner ${ownerId} for sitter ${dto.sitterId}`);
+    this.logger.log(`Booking ${booking.id} created by owner ${ownerId} for sitter ${dto.petFriendId}`);
 
     return {
       id: booking.id,
@@ -190,10 +190,10 @@ export class BookingsService {
     };
   }
 
-  async acceptBooking(sitterId: string, bookingId: string) {
+  async acceptBooking(petFriendId: string, bookingId: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    if (booking.sitterId !== sitterId) {
+    if (booking.petFriendId !== petFriendId) {
       throw new ForbiddenException({ error: 'NOT_YOUR_BOOKING', message: 'This booking is not assigned to you.' });
     }
 
@@ -206,13 +206,13 @@ export class BookingsService {
 
     // Confirm availability one more time (race condition guard)
     const isStillAvailable = await this.matching.checkSitterAvailability(
-      sitterId,
+      petFriendId,
       booking.requestedStart,
       booking.requestedEnd,
     );
     if (!isStillAvailable) {
       // Auto-decline and route to next
-      await this.declineBooking(sitterId, bookingId, 'Calendar conflict');
+      await this.declineBooking(petFriendId, bookingId, 'Calendar conflict');
       throw new ConflictException({
         error: 'CALENDAR_CONFLICT',
         message: 'You have a conflicting booking. Request declined automatically.',
@@ -225,17 +225,17 @@ export class BookingsService {
     });
 
     // Release soft lock → hard lock is the DB record
-    await this.releaseSitterLock(sitterId, booking.requestedStart, booking.requestedEnd);
+    await this.releaseSitterLock(petFriendId, booking.requestedStart, booking.requestedEnd);
 
-    this.eventEmitter.emit('booking.accepted', { booking: updated, sitterId });
+    this.eventEmitter.emit('booking.accepted', { booking: updated, petFriendId });
 
     return updated;
   }
 
-  async declineBooking(sitterId: string, bookingId: string, reason?: string) {
+  async declineBooking(petFriendId: string, bookingId: string, reason?: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    if (booking.sitterId !== sitterId) {
+    if (booking.petFriendId !== petFriendId) {
       throw new ForbiddenException('Not your booking.');
     }
     if (booking.status !== 'pending') {
@@ -243,26 +243,26 @@ export class BookingsService {
     }
 
     // Release soft lock
-    await this.releaseSitterLock(sitterId, booking.requestedStart, booking.requestedEnd);
+    await this.releaseSitterLock(petFriendId, booking.requestedStart, booking.requestedEnd);
 
     // Log routing history
     const routingHistory = (booking.routingHistory as any[]) || [];
-    routingHistory.push({ sitterId, reason: reason || 'declined', timestamp: new Date() });
+    routingHistory.push({ petFriendId, reason: reason || 'declined', timestamp: new Date() });
 
     await this.prisma.booking.update({
       where: { id: bookingId },
       data: { routingHistory, routingAttempt: { increment: 1 } },
     });
 
-    this.eventEmitter.emit('booking.declined', { booking, sitterId, reason });
+    this.eventEmitter.emit('booking.declined', { booking, petFriendId, reason });
 
     return { message: 'Booking declined.' };
   }
 
-  async startService(sitterId: string, bookingId: string) {
+  async startService(petFriendId: string, bookingId: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    if (booking.sitterId !== sitterId) throw new ForbiddenException('Not your booking.');
+    if (booking.petFriendId !== petFriendId) throw new ForbiddenException('Not your booking.');
     if (booking.status !== 'accepted') {
       throw new BadRequestException(`Cannot start a booking with status: ${booking.status}`);
     }
@@ -286,15 +286,74 @@ export class BookingsService {
       );
     }
 
+    // Generate 4-digit service-end code (shown to Parent only; PetFriend must enter it to complete service)
+    const endCode = this.generateFourDigitCode();
+    await this.prisma.bookingEndCode.create({
+      data: { bookingId, code: endCode },
+    });
+
     this.eventEmitter.emit('booking.started', { booking: updated });
 
     return updated;
   }
 
-  async endService(sitterId: string, bookingId: string, notes?: string) {
+  // ── BookingEndCode ──────────────────────────────────────────────────────────
+
+  /** Parent fetches their 4-digit code once the booking is active. */
+  async getEndCode(parentId: string, bookingId: string) {
+    const booking = await this.getBookingOrThrow(bookingId);
+    if (booking.parentId !== parentId) throw new ForbiddenException('Not your booking.');
+    if (booking.status !== 'active') {
+      throw new BadRequestException('End code is only available while the booking is active.');
+    }
+    const record = await this.prisma.bookingEndCode.findUnique({ where: { bookingId } });
+    if (!record) throw new NotFoundException('End code not generated yet.');
+    return { code: record.code, isUsed: record.isUsed };
+  }
+
+  /** PetFriend submits the 4-digit code to end the service. Transitions booking to code_verified → completed. */
+  async verifyEndCode(petFriendId: string, bookingId: string, code: string) {
+    const booking = await this.getBookingOrThrow(bookingId);
+    if (booking.petFriendId !== petFriendId) throw new ForbiddenException('Not your booking.');
+    if (booking.status !== 'active') {
+      throw new BadRequestException(`Cannot verify code for booking with status: ${booking.status}`);
+    }
+
+    const record = await this.prisma.bookingEndCode.findUnique({ where: { bookingId } });
+    if (!record) throw new NotFoundException('End code not found for this booking.');
+    if (record.isUsed) {
+      throw new BadRequestException({ error: 'CODE_ALREADY_USED', message: 'This code has already been used.' });
+    }
+    if (record.code !== code.trim()) {
+      throw new BadRequestException({ error: 'INVALID_CODE', message: 'Incorrect code. Please ask the Parent to share the 4-digit code.' });
+    }
+
+    // Mark code as used
+    await this.prisma.bookingEndCode.update({
+      where: { bookingId },
+      data: { isUsed: true, usedAt: new Date() },
+    });
+
+    // Transition: active → code_verified
+    const updated = await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: { status: 'code_verified', actualEnd: new Date() },
+    });
+
+    this.eventEmitter.emit('booking.code_verified', { booking: updated });
+
+    // Auto-complete after 2 hours if Parent doesn't confirm
+    await this.scheduleAutoComplete(bookingId, 2 * 60 * 60);
+
+    this.logger.log(`BookingEndCode verified for booking ${bookingId} by petFriend ${petFriendId}`);
+
+    return { message: 'Service ended successfully. Awaiting Parent confirmation.' };
+  }
+
+  async endService(petFriendId: string, bookingId: string, notes?: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    if (booking.sitterId !== sitterId) throw new ForbiddenException('Not your booking.');
+    if (booking.petFriendId !== petFriendId) throw new ForbiddenException('Not your booking.');
     if (booking.status !== 'active') {
       throw new BadRequestException(`Cannot end a booking with status: ${booking.status}`);
     }
@@ -304,7 +363,7 @@ export class BookingsService {
       data: {
         status: 'completed',
         actualEnd: new Date(),
-        ownerNotes: notes,
+        parentNotes: notes,
       },
     });
 
@@ -319,7 +378,7 @@ export class BookingsService {
   async confirmCompletion(ownerId: string, bookingId: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    if (booking.ownerId !== ownerId) throw new ForbiddenException('Not your booking.');
+    if (booking.parentId !== ownerId) throw new ForbiddenException('Not your booking.');
     if (booking.status !== 'completed') {
       throw new BadRequestException('Nothing to confirm.');
     }
@@ -332,10 +391,10 @@ export class BookingsService {
   async cancelBooking(userId: string, bookingId: string, reason: string) {
     const booking = await this.getBookingOrThrow(bookingId);
 
-    const isOwner = booking.ownerId === userId;
-    const isSitter = booking.sitterId === userId;
+    const isOwner = booking.parentId === userId;
+    const isPetFriend = booking.petFriendId === userId;
 
-    if (!isOwner && !isSitter) throw new ForbiddenException('Not your booking.');
+    if (!isOwner && !isPetFriend) throw new ForbiddenException('Not your booking.');
 
     const cancellableStatuses: BookingStatus[] = ['pending', 'accepted'];
     if (!cancellableStatuses.includes(booking.status)) {
@@ -371,7 +430,7 @@ export class BookingsService {
 
     // Release soft lock if still pending
     if (booking.status === 'pending') {
-      await this.releaseSitterLock(booking.sitterId, booking.requestedStart, booking.requestedEnd);
+      await this.releaseSitterLock(booking.petFriendId, booking.requestedStart, booking.requestedEnd);
     }
 
     this.eventEmitter.emit('booking.cancelled', {
@@ -393,7 +452,7 @@ export class BookingsService {
       : {};
 
     const where: any = {
-      ...(role === 'owner' ? { ownerId: userId } : { sitterId: userId }),
+      ...(role === 'owner' ? { parentId: userId } : { petFriendId: userId }),
       ...statusFilter,
     };
 
@@ -402,8 +461,8 @@ export class BookingsService {
         where,
         include: {
           pets: { include: { pet: { select: { id: true, name: true, species: true, profilePhoto: true } } } },
-          owner: { select: { id: true, firstName: true, lastName: true, profilePhoto: true } },
-          sitter: { select: { id: true, firstName: true, lastName: true, profilePhoto: true } },
+          parent: { select: { id: true, firstName: true, lastName: true, profilePhoto: true } },
+          petFriend: { select: { id: true, firstName: true, lastName: true, profilePhoto: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * limit,
@@ -442,12 +501,12 @@ export class BookingsService {
             },
           },
         },
-        owner: { select: { id: true, firstName: true, lastName: true, profilePhoto: true, phone: true } },
-        sitter: {
+        parent: { select: { id: true, firstName: true, lastName: true, profilePhoto: true, phone: true } },
+        petFriend: {
           select: {
             id: true, firstName: true, lastName: true, profilePhoto: true,
-            sitterProfile: {
-              select: { id: true, avgRating: true, totalReviews: true, hourlyRate: true, dailyRate: true, services: true },
+            petFriendProfile: {
+              select: { id: true, avgRating: true, totalReviews: true },
             },
           },
         },
@@ -459,7 +518,7 @@ export class BookingsService {
 
     if (!booking) throw new NotFoundException('Booking not found.');
 
-    if (booking.ownerId !== userId && booking.sitterId !== userId) {
+    if (booking.parentId !== userId && booking.petFriendId !== userId) {
       throw new ForbiddenException('Access denied.');
     }
 
@@ -474,9 +533,9 @@ export class BookingsService {
   // GEO-LOCKED PICKUP
   // ============================================================
 
-  async markReadyForPickup(sitterId: string, bookingId: string) {
+  async markReadyForPickup(petFriendId: string, bookingId: string) {
     const booking = await this.getBookingOrThrow(bookingId);
-    if (booking.sitterId !== sitterId) throw new ForbiddenException('Not your booking.');
+    if (booking.petFriendId !== petFriendId) throw new ForbiddenException('Not your booking.');
     if (booking.status !== 'active') {
       throw new BadRequestException('Booking must be active to mark as ready for pickup.');
     }
@@ -484,7 +543,7 @@ export class BookingsService {
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },
       data: { status: 'ready_for_pickup', readyForPickupAt: new Date() } as any,
-      include: { owner: { select: { id: true, firstName: true } } },
+      include: { parent: { select: { id: true, firstName: true } } },
     });
 
     this.eventEmitter.emit('booking.ready_for_pickup', { booking: updated });
@@ -497,7 +556,7 @@ export class BookingsService {
       include: { overtimeLog: true },
     });
     if (!booking) throw new NotFoundException('Booking not found.');
-    if (booking.ownerId !== userId && booking.sitterId !== userId) {
+    if (booking.parentId !== userId && booking.petFriendId !== userId) {
       throw new ForbiddenException('Access denied.');
     }
 
@@ -528,7 +587,7 @@ export class BookingsService {
       include: { overtimeLog: true },
     });
     if (!booking) throw new NotFoundException('Booking not found.');
-    if (booking.ownerId !== ownerId) throw new ForbiddenException('Not your booking.');
+    if (booking.parentId !== ownerId) throw new ForbiddenException('Not your booking.');
     if (booking.status !== 'ready_for_pickup') {
       throw new BadRequestException('Booking is not ready for pickup.');
     }
@@ -553,7 +612,7 @@ export class BookingsService {
       if (walletBalance >= overtimeCharge) {
         await this.prisma.$transaction([
           this.prisma.user.update({ where: { id: ownerId }, data: { walletBalance: { decrement: overtimeCharge } } as any }),
-          this.prisma.user.update({ where: { id: booking.sitterId }, data: { walletBalance: { increment: sitterShare } } as any }),
+          this.prisma.user.update({ where: { id: booking.petFriendId }, data: { walletBalance: { increment: sitterShare } } as any }),
         ]);
       } else {
         // Insufficient funds — flag outstanding balance
@@ -622,14 +681,14 @@ export class BookingsService {
     return booking;
   }
 
-  private async acquireSitterLock(sitterId: string, start: Date, end: Date): Promise<boolean> {
-    const key = `booking:lock:${sitterId}:${start.toISOString()}:${end.toISOString()}`;
+  private async acquireSitterLock(petFriendId: string, start: Date, end: Date): Promise<boolean> {
+    const key = `booking:lock:${petFriendId}:${start.toISOString()}:${end.toISOString()}`;
     const result = await this.redis.set(key, 'locked', 'NX', 600); // 10 min
     return result === 'OK';
   }
 
-  private async releaseSitterLock(sitterId: string, start: Date, end: Date): Promise<void> {
-    const key = `booking:lock:${sitterId}:${start.toISOString()}:${end.toISOString()}`;
+  private async releaseSitterLock(petFriendId: string, start: Date, end: Date): Promise<void> {
+    const key = `booking:lock:${petFriendId}:${start.toISOString()}:${end.toISOString()}`;
     await this.redis.del(key);
   }
 
@@ -690,5 +749,11 @@ export class BookingsService {
     if (tasks.length > 0) {
       await this.prisma.bookingTask.createMany({ data: tasks });
     }
+  }
+
+  private generateFourDigitCode(): string {
+    // Cryptographically random 4-digit code: 0000–9999
+    const n = Math.floor(Math.random() * 10000);
+    return n.toString().padStart(4, '0');
   }
 }

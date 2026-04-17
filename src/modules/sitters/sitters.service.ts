@@ -9,7 +9,7 @@ export class SittersService {
   constructor(private prisma: PrismaService) {}
 
   async findById(id: string) {
-    const profile = await this.prisma.sitterProfile.findUnique({
+    const profile = await this.prisma.petFriendProfile.findUnique({
       where: { id },
       include: {
         user: { select: { firstName: true, lastName: true, profilePhoto: true } },
@@ -31,32 +31,33 @@ export class SittersService {
 
     // Fetch reviews via user relation
     const reviews = await this.prisma.review.findMany({
-      where: { revieweeId: profile.userId, revieweeType: 'sitter', isPublished: true },
+      where: { revieweeId: profile.userId, revieweeType: 'petfriend', isPublished: true },
       take: 5,
       orderBy: { submittedAt: 'desc' },
       include: { reviewer: { select: { firstName: true, lastName: true } } },
     });
 
     // Build per-service pricing summary
+    const p = profile as any;
     const currentPrices: Record<string, number | null> = {
-      dog_walking:        profile.dogWalkingPrice ? Number(profile.dogWalkingPrice) : null,
-      house_sitting:      profile.houseSittingPrice ? Number(profile.houseSittingPrice) : null,
-      daycare:            profile.daycarePrice ? Number(profile.daycarePrice) : null,
-      overnight_boarding: profile.overnightPrice ? Number(profile.overnightPrice) : null,
-      drop_in:            profile.dropInVisitPrice ? Number(profile.dropInVisitPrice) : null,
+      dog_walking:        p.dogWalkingPrice ? Number(p.dogWalkingPrice) : null,
+      house_sitting:      p.houseSittingPrice ? Number(p.houseSittingPrice) : null,
+      daycare:            p.daycarePrice ? Number(p.daycarePrice) : null,
+      overnight_boarding: p.overnightPrice ? Number(p.overnightPrice) : null,
+      drop_in:            p.dropInVisitPrice ? Number(p.dropInVisitPrice) : null,
     };
     const pricing = buildPricingInfo(
       profile.totalReviews,
       Number(profile.avgRating),
-      profile.isVerifiedTrainer,
+      p.isVerifiedTrainer,
       currentPrices,
     );
 
     return {
       ...profile,
-      yearsOfExperience: profile.experienceYears,
-      maxPets: profile.maxPetsPerBooking,
-      acceptedSpecies: profile.petTypes,
+      yearsOfExperience: p.experienceYears,
+      maxPets: p.maxPetsPerBooking,
+      acceptedSpecies: p.petTypes,
       weeklyTemplate,
       pricing,
       reviews: reviews.map(r => ({
@@ -72,7 +73,7 @@ export class SittersService {
   async findNearby(lat: number, lng: number, radiusKm = 10) {
     // Basic proximity search — will be enhanced with PostGIS
     const delta = radiusKm / 111;
-    return this.prisma.sitterProfile.findMany({
+    return this.prisma.petFriendProfile.findMany({
       where: {
         isActive: true,
         lat: { gte: lat - delta, lte: lat + delta },
@@ -85,7 +86,7 @@ export class SittersService {
   }
 
   async getMyProfile(userId: string) {
-    const profile = await this.prisma.sitterProfile.findUnique({
+    const profile = await this.prisma.petFriendProfile.findUnique({
       where: { userId },
       include: {
         user: { select: { firstName: true, lastName: true, profilePhoto: true, phone: true } },
@@ -93,11 +94,12 @@ export class SittersService {
       },
     });
     if (!profile) throw new NotFoundException('Sitter profile not found');
+    const p = profile as any;
     return {
       ...profile,
-      yearsOfExperience: profile.experienceYears,
-      maxPetsAtOnce: profile.maxPetsPerBooking,
-      acceptedSpecies: profile.petTypes,
+      yearsOfExperience: p.experienceYears,
+      maxPetsAtOnce: p.maxPetsPerBooking,
+      acceptedSpecies: p.petTypes,
     };
   }
 
@@ -113,17 +115,17 @@ export class SittersService {
   }
 
   async createProfile(userId: string, data: any) {
-    const existing = await this.prisma.sitterProfile.findUnique({ where: { userId } });
+    const existing = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
     if (existing) throw new ConflictException('Sitter profile already exists');
-    const profile = await this.prisma.sitterProfile.create({
+    const profile = await this.prisma.petFriendProfile.create({
       data: { ...this.mapProfileInput(data), userId },
     });
-    await this.prisma.user.update({ where: { id: userId }, data: { isSitter: true } });
+    await this.prisma.user.update({ where: { id: userId }, data: { isPetFriend: true } });
     return profile;
   }
 
   async updateProfile(userId: string, data: any) {
-    return this.prisma.sitterProfile.update({
+    return this.prisma.petFriendProfile.update({
       where: { userId },
       data: this.mapProfileInput(data),
     });
@@ -131,52 +133,74 @@ export class SittersService {
 
   /** Replace the sitter's weekly availability template (all days at once) */
   async setWeeklyTemplate(userId: string, days: { dayOfWeek: number; startTime: string; endTime: string }[]) {
-    const profile = await this.prisma.sitterProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Sitter profile not found');
 
     // Replace all existing templates with the new set
-    await this.prisma.sitterAvailabilityTemplate.deleteMany({ where: { sitterId: profile.id } });
+    await this.prisma.petFriendAvailabilityTemplate.deleteMany({ where: { petFriendId: profile.id } });
     if (days.length > 0) {
-      await this.prisma.sitterAvailabilityTemplate.createMany({
+      await this.prisma.petFriendAvailabilityTemplate.createMany({
         data: days.map(d => ({
-          sitterId: profile.id,
+          petFriendId: profile.id,
           dayOfWeek: d.dayOfWeek,
           startTime: d.startTime || '09:00',
           endTime: d.endTime || '18:00',
         })),
       });
     }
-    return this.prisma.sitterAvailabilityTemplate.findMany({ where: { sitterId: profile.id } });
+    return this.prisma.petFriendAvailabilityTemplate.findMany({ where: { petFriendId: profile.id } });
   }
 
-  async getAvailability(sitterId: string, date?: string) {
-    const profile = await this.prisma.sitterProfile.findFirst({ where: { id: sitterId } });
+  async getAvailability(petFriendId: string, date?: string) {
+    const profile = await this.prisma.petFriendProfile.findFirst({ where: { id: petFriendId } });
     if (!profile) throw new NotFoundException('Sitter not found');
-    const templates = await this.prisma.sitterAvailabilityTemplate.findMany({
-      where: { sitterId: profile.id },
+    const templates = await this.prisma.petFriendAvailabilityTemplate.findMany({
+      where: { petFriendId: profile.id },
     });
     return { templates, date };
+  }
+
+  async getMyAvailability(userId: string) {
+    const profile = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Sitter profile not found');
+    const templates = await this.prisma.petFriendAvailabilityTemplate.findMany({
+      where: { petFriendId: profile.id },
+      orderBy: { dayOfWeek: 'asc' },
+    });
+    return { templates };
+  }
+
+  async deleteAvailabilityTemplate(userId: string, templateId: string) {
+    const profile = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
+    if (!profile) throw new NotFoundException('Sitter profile not found');
+    const template = await this.prisma.petFriendAvailabilityTemplate.findFirst({
+      where: { id: templateId, petFriendId: profile.id },
+    });
+    if (!template) throw new NotFoundException('Availability template not found');
+    await this.prisma.petFriendAvailabilityTemplate.delete({ where: { id: templateId } });
+    return { message: 'Availability slot deleted.' };
   }
 
   // ─── DYNAMIC PRICING ────────────────────────────────────────────────────
 
   /** Get pricing tier, ranges and current service prices for any sitter (by sitterProfile.id) */
-  async getPricingInfo(sitterId: string) {
-    const profile = await this.prisma.sitterProfile.findUnique({ where: { id: sitterId } });
+  async getPricingInfo(petFriendId: string) {
+    const profile = await this.prisma.petFriendProfile.findUnique({ where: { id: petFriendId } });
     if (!profile) throw new NotFoundException('Sitter not found');
 
+    const pp = profile as any;
     const currentPrices: Record<string, number | null> = {
-      dog_walking:        profile.dogWalkingPrice ? Number(profile.dogWalkingPrice) : null,
-      house_sitting:      profile.houseSittingPrice ? Number(profile.houseSittingPrice) : null,
-      daycare:            profile.daycarePrice ? Number(profile.daycarePrice) : null,
-      overnight_boarding: profile.overnightPrice ? Number(profile.overnightPrice) : null,
-      drop_in:            profile.dropInVisitPrice ? Number(profile.dropInVisitPrice) : null,
+      dog_walking:        pp.dogWalkingPrice ? Number(pp.dogWalkingPrice) : null,
+      house_sitting:      pp.houseSittingPrice ? Number(pp.houseSittingPrice) : null,
+      daycare:            pp.daycarePrice ? Number(pp.daycarePrice) : null,
+      overnight_boarding: pp.overnightPrice ? Number(pp.overnightPrice) : null,
+      drop_in:            pp.dropInVisitPrice ? Number(pp.dropInVisitPrice) : null,
     };
 
     return buildPricingInfo(
       profile.totalReviews,
       Number(profile.avgRating),
-      profile.isVerifiedTrainer,
+      pp.isVerifiedTrainer,
       currentPrices,
     );
   }
@@ -189,7 +213,7 @@ export class SittersService {
     overnight_boarding?: number;
     drop_in?: number;
   }) {
-    const profile = await this.prisma.sitterProfile.findUnique({ where: { userId } });
+    const profile = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Sitter profile not found');
 
     const tier = computeSitterTier(profile.totalReviews, Number(profile.avgRating));
@@ -197,7 +221,7 @@ export class SittersService {
     // Validate each submitted price is within allowed range
     for (const [svc, price] of Object.entries(prices)) {
       if (price === undefined || price === null) continue;
-      const range = getPriceRange(svc, tier, profile.isVerifiedTrainer);
+      const range = getPriceRange(svc, tier, (profile as any).isVerifiedTrainer);
       if (price < range.min || price > range.max) {
         throw new BadRequestException({
           error: 'PRICE_OUT_OF_RANGE',
@@ -206,7 +230,7 @@ export class SittersService {
       }
     }
 
-    return this.prisma.sitterProfile.update({
+    return this.prisma.petFriendProfile.update({
       where: { userId },
       data: {
         dogWalkingPrice:   prices.dog_walking        != null ? prices.dog_walking        : undefined,
@@ -214,7 +238,7 @@ export class SittersService {
         daycarePrice:      prices.daycare             != null ? prices.daycare             : undefined,
         overnightPrice:    prices.overnight_boarding  != null ? prices.overnight_boarding  : undefined,
         dropInVisitPrice:  prices.drop_in             != null ? prices.drop_in             : undefined,
-      },
+      } as any,
     });
   }
 }

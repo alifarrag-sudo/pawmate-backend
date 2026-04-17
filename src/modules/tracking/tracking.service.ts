@@ -30,7 +30,7 @@ export class TrackingService {
     private eventEmitter: EventEmitter2,
   ) {}
 
-  async startWalkSession(sitterId: string, taskId: string) {
+  async startWalkSession(petFriendId: string, taskId: string) {
     // Verify task belongs to this sitter's active booking
     const task = await this.prisma.bookingTask.findUnique({
       where: { id: taskId },
@@ -38,7 +38,7 @@ export class TrackingService {
     });
 
     if (!task) throw new NotFoundException('Task not found.');
-    if (task.booking.sitterId !== sitterId) throw new ForbiddenException('Not your task.');
+    if (task.booking.petFriendId !== petFriendId) throw new ForbiddenException('Not your task.');
     if (task.booking.status !== 'active') {
       throw new BadRequestException('Booking is not active.');
     }
@@ -51,7 +51,7 @@ export class TrackingService {
 
     // Check no other active walk for this sitter
     const activeWalk = await this.prisma.walkSession.findFirst({
-      where: { sitterId, isComplete: false },
+      where: { petFriendId, isComplete: false },
     });
     if (activeWalk) {
       throw new BadRequestException({
@@ -72,7 +72,7 @@ export class TrackingService {
       data: {
         taskId,
         bookingId: task.bookingId,
-        sitterId,
+        petFriendId,
         petIds,
         startTime: new Date(),
       },
@@ -80,9 +80,9 @@ export class TrackingService {
 
     // Store session in Redis for fast live tracking
     await this.redis.hset(`walk:${session.id}`, {
-      sitterId,
+      petFriendId,
       bookingId: task.bookingId,
-      ownerId: task.booking.ownerId,
+      ownerId: task.booking.parentId,
       startTime: session.startTime.toISOString(),
       totalDistanceM: '0',
       lastLat: '0',
@@ -92,23 +92,23 @@ export class TrackingService {
     // Notify owner
     this.eventEmitter.emit('walk.started', {
       sessionId: session.id,
-      sitterId,
-      ownerId: task.booking.ownerId,
+      petFriendId,
+      ownerId: task.booking.parentId,
       bookingId: task.bookingId,
     });
 
-    this.logger.log(`Walk session ${session.id} started by sitter ${sitterId}`);
+    this.logger.log(`Walk session ${session.id} started by sitter ${petFriendId}`);
     return session;
   }
 
-  async addTrackingPoints(sessionId: string, sitterId: string, points: GpsPoint[]) {
+  async addTrackingPoints(sessionId: string, petFriendId: string, points: GpsPoint[]) {
     // Validate session
     const session = await this.prisma.walkSession.findUnique({
       where: { id: sessionId },
     });
 
     if (!session) throw new NotFoundException('Walk session not found.');
-    if (session.sitterId !== sitterId) throw new ForbiddenException('Not your walk session.');
+    if (session.petFriendId !== petFriendId) throw new ForbiddenException('Not your walk session.');
     if (session.isComplete) throw new BadRequestException('Walk session is already complete.');
 
     // Sort points by timestamp (important for offline batch uploads)
@@ -180,14 +180,14 @@ export class TrackingService {
     };
   }
 
-  async endWalkSession(sessionId: string, sitterId: string, notes?: string) {
+  async endWalkSession(sessionId: string, petFriendId: string, notes?: string) {
     const session = await this.prisma.walkSession.findUnique({
       where: { id: sessionId },
       include: { task: true },
     });
 
     if (!session) throw new NotFoundException('Walk session not found.');
-    if (session.sitterId !== sitterId) throw new ForbiddenException('Not your walk session.');
+    if (session.petFriendId !== petFriendId) throw new ForbiddenException('Not your walk session.');
     if (session.isComplete) throw new BadRequestException('Walk session already ended.');
 
     const endTime = new Date();
@@ -223,7 +223,7 @@ export class TrackingService {
       data: {
         status: 'completed',
         completedAt: endTime,
-        completedById: sitterId,
+        completedById: petFriendId,
         notes,
       },
     });
@@ -234,7 +234,7 @@ export class TrackingService {
     // Notify owner
     this.eventEmitter.emit('walk.ended', {
       sessionId,
-      sitterId,
+      petFriendId,
       task: session.task,
       stats: {
         distanceM: Number(session.totalDistanceM),
@@ -256,15 +256,15 @@ export class TrackingService {
   async getLiveWalkData(sessionId: string, requestingUserId: string) {
     const session = await this.prisma.walkSession.findUnique({
       where: { id: sessionId },
-      include: { booking: { select: { ownerId: true, sitterId: true } } },
+      include: { booking: { select: { parentId: true, petFriendId: true } } },
     });
 
     if (!session) throw new NotFoundException('Walk session not found.');
 
     // Only owner and sitter can view live tracking
     if (
-      session.booking.ownerId !== requestingUserId &&
-      session.sitterId !== requestingUserId
+      session.booking.parentId !== requestingUserId &&
+      session.petFriendId !== requestingUserId
     ) {
       throw new ForbiddenException('Access denied.');
     }

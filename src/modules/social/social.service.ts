@@ -6,7 +6,7 @@ export class SocialService {
   constructor(private prisma: PrismaService) {}
 
   async getPlaydates(limit = 20) {
-    return this.prisma.playdate.findMany({
+    return (this.prisma as any).playdate.findMany({
       where: { status: 'open', scheduledAt: { gte: new Date() } },
       include: { attendees: true },
       orderBy: { scheduledAt: 'asc' },

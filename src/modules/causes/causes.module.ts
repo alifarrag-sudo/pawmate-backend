@@ -1,3 +1,4 @@
+// DEFERRED: Community feature — reintroduce post-launch
 import { Module } from '@nestjs/common';
 import { CausesController } from './causes.controller';
 import { CausesService } from './causes.service';

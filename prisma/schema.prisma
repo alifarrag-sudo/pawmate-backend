@@ -1,5 +1,6 @@
-// PawMate Egypt - Full Prisma Schema
-// Run: npx prisma migrate dev --name init
+// PawMate Egypt — Restructured Prisma Schema
+// Restructure branch: feature/app-restructure
+// Run: npx prisma migrate dev --name restructure_roles_and_profiles
 
 generator client {
   provider = "prisma-client-js"
@@ -20,8 +21,8 @@ enum UserRole {
 }
 
 enum ActiveRole {
-  owner
-  sitter
+  parent     // was: owner
+  petfriend  // was: sitter
 }
 
 enum LoyaltyTier {
@@ -125,12 +126,15 @@ enum TrainingLevel {
   advanced
 }
 
+// drop_in removed per restructure
 enum ServiceType {
   dog_walking
-  drop_in
-  daycare
-  overnight_boarding
-  house_sitting
+  pet_watching_hourly
+  pet_watching_daily
+  overnight_stay
+  trainer_session
+  kennel_boarding
+  pethotel_boarding
 }
 
 enum OfferStatus {
@@ -153,10 +157,11 @@ enum BookingStatus {
   accepted
   active
   ready_for_pickup
+  code_verified   // 4-digit code entered by PetFriend
   completed
   cancelled
   disputed
-  no_sitters_available
+  no_providers_available
 }
 
 enum OvertimeStatus {
@@ -165,12 +170,14 @@ enum OvertimeStatus {
   WAIVED
 }
 
+// DEFERRED: Community feature
 enum AdoptionStatus {
   available
   pending
   adopted
 }
 
+// DEFERRED: Community feature
 enum CauseCategory {
   medical
   rescue
@@ -180,6 +187,7 @@ enum CauseCategory {
   other
 }
 
+// DEFERRED: Community feature
 enum CauseStatus {
   pending_approval
   active
@@ -189,6 +197,7 @@ enum CauseStatus {
   cancelled
 }
 
+// DEFERRED: Community feature
 enum WithdrawalStatus {
   pending
   approved
@@ -220,18 +229,21 @@ enum PaymentMethod {
 }
 
 enum ServiceLocationType {
-  owner_home
-  sitter_home
+  parent_home   // was: owner_home
+  petfriend_home // was: sitter_home
+  trainer_facility
+  kennel
+  pethotel
   custom
 }
 
 enum CancellationType {
-  owner_24h_plus
-  owner_24h_minus
-  owner_1h_minus
-  owner_noshow
-  sitter_cancel
-  sitter_noshow
+  parent_24h_plus    // was: owner_24h_plus
+  parent_24h_minus   // was: owner_24h_minus
+  parent_1h_minus    // was: owner_1h_minus
+  parent_noshow      // was: owner_noshow
+  petfriend_cancel   // was: sitter_cancel
+  petfriend_noshow   // was: sitter_noshow
   admin_cancel
 }
 
@@ -260,8 +272,8 @@ enum DisputeStatus {
 }
 
 enum DisputeResolution {
-  refund_owner
-  pay_sitter
+  refund_parent    // was: refund_owner
+  pay_petfriend    // was: pay_sitter
   partial_resolution
   no_action
 }
@@ -331,7 +343,7 @@ enum PaymentGateway {
   platform
 }
 
-enum PayoutMethod {
+enum ProviderPayoutMethod {
   bank_transfer
   vodafone_cash
   orange_cash
@@ -346,8 +358,8 @@ enum PayoutStatus {
 }
 
 enum RevieweeType {
-  owner
-  sitter
+  parent    // was: owner
+  petfriend // was: sitter
 }
 
 enum ModerationAction {
@@ -382,6 +394,55 @@ enum DeviceType {
   android
 }
 
+// Provider types for the marketplace
+enum ProviderType {
+  PETFRIEND    // was: SITTER — individual caregiver
+  TRAINER
+  KENNEL
+  PETHOTEL
+  VET          // deferred — waitlist only
+  GROOMER      // deferred — waitlist only
+  PRODUCT_SELLER // deferred — waitlist only
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum WaitlistServiceType {
+  VET
+  GROOMER
+  PRODUCTS
+}
+
+enum TrainerOfferingType {
+  SESSION
+  PACKAGE
+  COURSE
+  CONSULTATION
+}
+
+enum TrainerGroupSize {
+  private_1on1
+  small_group
+  group_class
+}
+
+enum TrainerSessionLocation {
+  trainer_facility
+  parent_home
+  outdoor
+  virtual
+}
+
+enum HomeType {
+  apartment
+  house
+  villa
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -399,10 +460,14 @@ model User {
   gender       Gender?
   role         UserRole @default(user)
 
-  // Dual role
-  isOwner      Boolean    @default(true)
-  isSitter     Boolean    @default(false)
-  activeRole   ActiveRole @default(owner)
+  // Dual role — "Parent" is the demand side, "PetFriend" is supply side
+  isParent       Boolean    @default(true)   // was: isOwner
+  isPetFriend    Boolean    @default(false)  // was: isSitter
+  activeRole     ActiveRole @default(parent) // was: owner
+
+  // Parent emergency contact
+  emergencyContactName  String?
+  emergencyContactPhone String?
 
   // Verification
   idVerified      Boolean   @default(false)
@@ -415,13 +480,15 @@ model User {
   idReviewer      User?     @relation("IdReviewer", fields: [idReviewedById], references: [id])
   idReviewees     User[]    @relation("IdReviewer")
 
+  // Email + phone verification
+  emailVerified Boolean   @default(false)
+  phoneVerified Boolean   @default(true)
+
   // Status
   isActive      Boolean   @default(true)
   isBanned      Boolean   @default(false)
   banReason     String?
   banExpiresAt  DateTime?
-  emailVerified Boolean   @default(false)
-  phoneVerified Boolean   @default(true)
 
   // Loyalty
   loyaltyPoints Int         @default(0)
@@ -445,41 +512,48 @@ model User {
   deletedAt   DateTime? // Soft delete
 
   // Relations
-  refreshTokens     RefreshToken[]
-  devices           UserDevice[]
-  savedLocations    UserLocation[]
-  sitterProfile     SitterProfile?
-  pets              Pet[]
-  bookingsAsOwner   Booking[]      @relation("BookingOwner")
-  bookingsAsSitter  Booking[]      @relation("BookingSitter")
-  paymentTransactions PaymentTransaction[]
-  payouts           SitterPayout[]
-  reviewsGiven      Review[]       @relation("Reviewer")
-  reviewsReceived   Review[]       @relation("Reviewee")
-  notifications     Notification[]
-  followedBy        Follow[]       @relation("Followee")
-  following         Follow[]       @relation("Follower")
-  loyaltyTransactions LoyaltyTransaction[]
-  adminActions      AdminAction[]  @relation("AdminActor")
-  cancelledBookings Booking[]      @relation("CancelledBy")
-  completedCareLogs CareLog[]      @relation("CareLogCompleter")
-  offersAsOwner     Offer[]        @relation("OfferOwner")
-  offersAsSitter    Offer[]        @relation("OfferSitter")
-  providerProfile   ProviderProfile?
-  providerType      ProviderType?
-  products          Product[]
-  ordersAsBuyer     Order[]        @relation("OrderBuyer")
-  ordersAsSeller    Order[]        @relation("OrderSeller")
+  refreshTokens         RefreshToken[]
+  devices               UserDevice[]
+  savedLocations        UserLocation[]
+  petFriendProfile      PetFriendProfile?    // was: sitterProfile
+  pets                  Pet[]
+  bookingsAsParent      Booking[]            @relation("BookingParent")   // was: BookingOwner
+  bookingsAsPetFriend   Booking[]            @relation("BookingPetFriend") // was: BookingSitter
+  paymentTransactions   PaymentTransaction[]
+  payouts               PetFriendPayout[]    // was: SitterPayout
+  reviewsGiven          Review[]             @relation("Reviewer")
+  reviewsReceived       Review[]             @relation("Reviewee")
+  notifications         Notification[]
+  followedBy            Follow[]             @relation("Followee")
+  following             Follow[]             @relation("Follower")
+  loyaltyTransactions   LoyaltyTransaction[]
+  adminActions          AdminAction[]        @relation("AdminActor")
+  cancelledBookings     Booking[]            @relation("CancelledBy")
+  completedCareLogs     CareLog[]            @relation("CareLogCompleter")
+  offersAsParent        Offer[]              @relation("OfferParent")    // was: OfferOwner
+  offersAsPetFriend     Offer[]              @relation("OfferPetFriend") // was: OfferSitter
+  providerProfile       ProviderProfile?
+  providerType          ProviderType?
+  products              Product[]
+  ordersAsBuyer         Order[]              @relation("OrderBuyer")
+  ordersAsSeller        Order[]              @relation("OrderSeller")
   foodSeller            FoodSeller?
-  foodOrdersAsBuyer     FoodOrder[]         @relation("FoodOrderBuyer")
-  foodReviewsGiven      FoodReview[]        @relation("FoodReviewer")
-  foodReviewsReceived   FoodReview[]        @relation("FoodReviewTarget")
-  adoptionPosts         AdoptionPost[]      @relation("AdoptionPoster")
-  adoptionMessagesSent  AdoptionMessage[]   @relation("AdoptionMsgSender")
-  adoptionMessagesRecv  AdoptionMessage[]   @relation("AdoptionMsgReceiver")
-  causesCreated         Cause[]             @relation("CauseCreator")
-  donations             Donation[]          @relation("Donor")
-  withdrawalRequests    WithdrawalRequest[] @relation("WithdrawalRequester")
+  foodOrdersAsBuyer     FoodOrder[]          @relation("FoodOrderBuyer")
+  foodReviewsGiven      FoodReview[]         @relation("FoodReviewer")
+  foodReviewsReceived   FoodReview[]         @relation("FoodReviewTarget")
+  waitlistEntries       UserWaitlist[]
+  payoutMethods         PayoutMethodRecord[]
+  trainerProfile        TrainerProfile?
+  kennelProfile         KennelProfile?
+  petHotelProfile       PetHotelProfile?
+
+  // DEFERRED: Community feature
+  adoptionPosts         AdoptionPost[]       @relation("AdoptionPoster")
+  adoptionMessagesSent  AdoptionMessage[]    @relation("AdoptionMsgSender")
+  adoptionMessagesRecv  AdoptionMessage[]    @relation("AdoptionMsgReceiver")
+  causesCreated         Cause[]              @relation("CauseCreator")
+  donations             Donation[]           @relation("Donor")
+  withdrawalRequests    WithdrawalRequest[]  @relation("WithdrawalRequester")
 
   @@index([phone])
   @@index([email])
@@ -540,33 +614,69 @@ model UserLocation {
 }
 
 // ============================================================
-// SITTER PROFILES
+// WAITLIST (Marketplace: Vets, Groomers, Products)
 // ============================================================
 
-model SitterProfile {
+model UserWaitlist {
+  id          String              @id @default(uuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceType WaitlistServiceType
+  createdAt   DateTime            @default(now())
+
+  @@unique([userId, serviceType])
+  @@index([serviceType])
+  @@map("user_waitlist")
+}
+
+// ============================================================
+// PAYOUT METHODS (PetFriends, Trainers, Kennels, PetHotels)
+// ============================================================
+
+model PayoutMethodRecord {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        String   // BANK | VODAFONE_CASH | WALLET
+  details     Json     // { bankName?, accountNumber, accountHolder?, walletNumber?, provider? }
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@map("payout_method_records")
+}
+
+// ============================================================
+// PETFRIEND PROFILES (was: SitterProfile)
+// ============================================================
+
+model PetFriendProfile {
   id               String   @id @default(uuid())
   userId           String   @unique
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   bio              String?
-  experienceYears  Int      @default(0)
-  services         String[] // ServiceType values
-  petTypes         String[] // Species values
-  petSizes         String[] // WeightCategory values
-  maxPetsPerBooking Int     @default(3)
 
-  // Pricing (EGP) — legacy generic rates
-  hourlyRate  Decimal? @db.Decimal(8, 2)
-  dailyRate   Decimal? @db.Decimal(8, 2)
-  weeklyRate  Decimal? @db.Decimal(8, 2)
-  monthlyRate Decimal? @db.Decimal(8, 2)
-  extraPetFee Decimal  @default(0) @db.Decimal(8, 2)
+  // Home details
+  homeType         HomeType?
+  hasYard          Boolean  @default(false)
+  hasOtherPets     Boolean  @default(false)
+  otherPetsDetails String?  // description of other pets
+  hasChildren      Boolean  @default(false)
+  childrenAges     String?  // e.g. "3, 7, 12"
+  placePhotos      String[] @default([]) // min 3 required
 
-  // Per-service dynamic pricing (set by sitter within tier range)
-  dogWalkingPrice    Decimal? @db.Decimal(8, 2)  // per hour
-  houseSittingPrice  Decimal? @db.Decimal(8, 2)  // per day
-  daycarePrice       Decimal? @db.Decimal(8, 2)  // per day
-  overnightPrice     Decimal? @db.Decimal(8, 2)  // per night
-  dropInVisitPrice   Decimal? @db.Decimal(8, 2)  // per visit
+  // Service pricing (set by PetFriend, in EGP)
+  watchingHourlyRate  Decimal? @db.Decimal(8, 2)  // pet_watching_hourly
+  watchingDailyRate   Decimal? @db.Decimal(8, 2)  // pet_watching_daily (up to 12hrs)
+  overnightRate       Decimal? @db.Decimal(8, 2)  // overnight_stay per night
+  walkRate30min       Decimal? @db.Decimal(8, 2)  // dog_walking 30 min
+  walkRate60min       Decimal? @db.Decimal(8, 2)  // dog_walking 60 min
+  overtimeRatePerHour Decimal? @db.Decimal(8, 2)  // charged after 30-min grace period
+
+  // Availability
+  maxPetsSimultaneous Int     @default(1)
+  petTypesAccepted    String[] // dog, cat, both, other
+  petSizesAccepted    String[] // WeightCategory values
 
   // Location
   lat             Decimal? @db.Decimal(10, 8)
@@ -575,10 +685,7 @@ model SitterProfile {
   addressCity     String?
   addressDistrict String?
 
-  // Availability
-  instantBook Boolean @default(false)
-
-  // Performance Metrics (updated by cron)
+  // Performance metrics (updated by cron)
   avgRating        Decimal @default(0.00) @db.Decimal(3, 2)
   totalReviews     Int     @default(0)
   totalBookings    Int     @default(0)
@@ -588,11 +695,9 @@ model SitterProfile {
   cancellationRate Decimal @default(0.00) @db.Decimal(5, 2)
 
   // Badges
-  isVerified        Boolean @default(false)
-  hasPoliceCheck    Boolean @default(false)
-  isSuperSitter     Boolean @default(false)
-  isFeatured        Boolean @default(false)
-  isVerifiedTrainer Boolean @default(false)
+  isVerified      Boolean @default(false)
+  isFeatured      Boolean @default(false)
+  instantBook     Boolean @default(false)
 
   // Status
   isActive       Boolean  @default(true)
@@ -602,58 +707,300 @@ model SitterProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Relations
-  availabilityTemplates  SitterAvailabilityTemplate[]
-  availabilityOverrides  SitterAvailabilityOverride[]
-  certifications         SitterCertification[]
+  availabilityTemplates  PetFriendAvailabilityTemplate[]
+  availabilityOverrides  PetFriendAvailabilityOverride[]
+  certifications         PetFriendCertification[]
 
   @@index([lat, lng])
   @@index([isActive, isVerified])
-  @@map("sitter_profiles")
+  @@map("petfriend_profiles")
 }
 
-model SitterAvailabilityTemplate {
-  id        String        @id @default(uuid())
-  sitterId  String
-  sitter    SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
-  dayOfWeek Int           // 0=Sun, 6=Sat
-  startTime String        // "09:00"
-  endTime   String        // "18:00"
-  createdAt DateTime      @default(now())
+model PetFriendAvailabilityTemplate {
+  id             String           @id @default(uuid())
+  petFriendId    String
+  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  dayOfWeek      Int              // 0=Sun, 6=Sat
+  startTime      String           // "09:00"
+  endTime        String           // "18:00"
+  createdAt      DateTime         @default(now())
 
-  @@index([sitterId])
-  @@map("sitter_availability_templates")
+  @@index([petFriendId])
+  @@map("petfriend_availability_templates")
 }
 
-model SitterAvailabilityOverride {
-  id           String        @id @default(uuid())
-  sitterId     String
-  sitter       SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
-  overrideDate DateTime      @db.Date
-  isAvailable  Boolean
-  startTime    String?
-  endTime      String?
-  reason       String?
-  createdAt    DateTime      @default(now())
+model PetFriendAvailabilityOverride {
+  id             String           @id @default(uuid())
+  petFriendId    String
+  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  overrideDate   DateTime         @db.Date
+  isAvailable    Boolean
+  startTime      String?
+  endTime        String?
+  reason         String?
+  createdAt      DateTime         @default(now())
 
-  @@index([sitterId, overrideDate])
-  @@map("sitter_availability_overrides")
+  @@index([petFriendId, overrideDate])
+  @@map("petfriend_availability_overrides")
 }
 
-model SitterCertification {
-  id          String        @id @default(uuid())
-  sitterId    String
-  sitter      SitterProfile @relation(fields: [sitterId], references: [id], onDelete: Cascade)
-  certName    String
-  issuedBy    String?
-  issueDate   DateTime?     @db.Date
-  expiryDate  DateTime?     @db.Date
-  documentUrl String?
-  isVerified  Boolean       @default(false)
-  verifiedById String?
-  createdAt   DateTime      @default(now())
+model PetFriendCertification {
+  id             String           @id @default(uuid())
+  petFriendId    String
+  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  certName       String
+  issuedBy       String?
+  issueDate      DateTime?        @db.Date
+  expiryDate     DateTime?        @db.Date
+  documentUrl    String?
+  isVerified     Boolean          @default(false)
+  verifiedById   String?
+  createdAt      DateTime         @default(now())
 
-  @@map("sitter_certifications")
+  @@map("petfriend_certifications")
+}
+
+// ============================================================
+// TRAINER PROFILES
+// ============================================================
+
+model TrainerProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio             String?
+  yearsExperience Int      @default(0)
+
+  // Credentials
+  certifications     Json     @default("[]") // array of { name, issuedBy, documentUrl, isVerified }
+  specializations    String[] // obedience, puppy_training, behavior_modification, aggression, service_dog, agility, trick_training, other
+  methodsDescription String?
+  facilityPhotos     String[] @default([]) // min 3
+  videoIntroUrl      String?
+
+  // Booking lead time
+  bookingLeadHours Int @default(24)
+
+  // Performance
+  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int     @default(0)
+
+  // Location
+  lat             Decimal? @db.Decimal(10, 8)
+  lng             Decimal? @db.Decimal(11, 8)
+  addressCity     String?
+  addressDistrict String?
+
+  // Verification
+  isVerified Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  offerings             TrainerOffering[]
+  availabilityTemplates TrainerAvailabilityTemplate[]
+
+  @@index([isActive, isVerified])
+  @@map("trainer_profiles")
+}
+
+model TrainerOffering {
+  id          String              @id @default(uuid())
+  trainerId   String
+  trainer     TrainerProfile      @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  type        TrainerOfferingType
+  name        String
+  description String?
+
+  // For SESSION and CONSULTATION
+  durationMinutes Int?
+  sessionLocation TrainerSessionLocation?
+  price           Decimal?  @db.Decimal(8, 2)
+
+  // For PACKAGE
+  sessionsIncluded    Int?
+  packageValidityDays Int?   // e.g. must use within 56 days (8 weeks)
+
+  // For COURSE
+  weeksCount        Int?
+  sessionsPerWeek   Int?
+  groupSize         TrainerGroupSize?
+  curriculum        String?
+  startDate         DateTime? @db.Date
+  ongoingEnrollment Boolean   @default(false)
+
+  // What's included / what parent receives
+  includedDetails String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([trainerId, type, isActive])
+  @@map("trainer_offerings")
+}
+
+model TrainerAvailabilityTemplate {
+  id          String         @id @default(uuid())
+  trainerId   String
+  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int            // 0=Sun, 6=Sat
+  startTime   String         // "09:00"
+  endTime     String         // "18:00"
+  createdAt   DateTime       @default(now())
+
+  @@index([trainerId])
+  @@map("trainer_availability_templates")
+}
+
+// ============================================================
+// KENNEL PROFILES
+// ============================================================
+
+model KennelProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Business info
+  businessName       String
+  commercialRegister String? // سجل تجاري — marks as "Verified Business" if provided
+  businessLicense    String? // document URL
+  taxCardNumber      String?
+  ownerName          String?
+
+  // Contact
+  businessPhone String?
+  businessEmail String?
+
+  // Facility
+  addressLine     String?
+  city            String?
+  district        String?
+  lat             Decimal? @db.Decimal(10, 8)
+  lng             Decimal? @db.Decimal(11, 8)
+  facilityPhotos  String[] @default([]) // min 5: exterior, interior, rooms, play, feeding
+  totalCapacity   Int?
+  operatingHours  Json?    // { mon: { open, close, closed }, ... }
+  daysOpen        String[] // ["mon","tue","wed","thu","fri","sat","sun"]
+
+  // Pet acceptance
+  petTypesAccepted  String[] // dog, cat, other
+  sizesAccepted     String[] // WeightCategory values
+
+  // Amenities
+  amenities         String[] // outdoor_play, indoor_play, ac, heating, cctv, grooming, vet_oncall, pool, individual_rooms, group_housing
+
+  // Safety
+  hasIsolationArea  Boolean @default(false)
+  emergencyVetName  String?
+  emergencyVetPhone String?
+
+  // Pricing
+  standardRatePerNight  Decimal? @db.Decimal(8, 2)
+  premiumRatePerNight   Decimal? @db.Decimal(8, 2)
+  daycareRatePerDay     Decimal? @db.Decimal(8, 2)
+  extraServices         Json?    // [{ name, price }]
+  pickupDropoffAvail    Boolean  @default(false)
+  pickupDropoffPrice    Decimal? @db.Decimal(8, 2)
+
+  // Requirements
+  vaccinesRequired     String[] // list of required vaccine names
+  requiresAssessment   Boolean  @default(false)
+  requiresTrialDay     Boolean  @default(false)
+
+  // Stay limits
+  minStayNights Int?
+  maxStayNights Int?
+
+  // Performance
+  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int     @default(0)
+
+  // Verification
+  verificationStatus VerificationStatus @default(PENDING)
+  isVerified         Boolean            @default(false)
+  verifiedAt         DateTime?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city, isActive, isVerified])
+  @@index([lat, lng])
+  @@map("kennel_profiles")
+}
+
+// ============================================================
+// PETHOTEL PROFILES (extends Kennel with room types)
+// ============================================================
+
+model PetHotelProfile {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Business info (same as Kennel)
+  businessName       String
+  commercialRegister String?
+  businessLicense    String?
+  taxCardNumber      String?
+  ownerName          String?
+
+  businessPhone String?
+  businessEmail String?
+
+  // Facility
+  addressLine    String?
+  city           String?
+  district       String?
+  lat            Decimal? @db.Decimal(10, 8)
+  lng            Decimal? @db.Decimal(11, 8)
+  facilityPhotos String[] @default([]) // min 5
+
+  totalCapacity  Int?
+  operatingHours Json?
+  daysOpen       String[]
+
+  petTypesAccepted String[]
+  sizesAccepted    String[]
+
+  // Room types: JSON array of { name, description, photos[], capacity, pricePerNight, amenities[] }
+  roomTypes Json @default("[]")
+
+  // Premium amenities (all Kennel amenities + extras)
+  amenities String[] // includes: room_service, spa_grooming, webcam, daily_updates, private_play, luxury_bedding, special_diet, puppy_socialization
+
+  hasIsolationArea  Boolean @default(false)
+  emergencyVetName  String?
+  emergencyVetPhone String?
+
+  extraServices     Json?
+  pickupDropoffAvail Boolean @default(false)
+  pickupDropoffPrice Decimal? @db.Decimal(8, 2)
+
+  vaccinesRequired   String[]
+  requiresAssessment Boolean @default(false)
+  requiresTrialDay   Boolean @default(false)
+
+  minStayNights Int?
+  maxStayNights Int?
+
+  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int     @default(0)
+
+  verificationStatus VerificationStatus @default(PENDING)
+  isVerified         Boolean            @default(false)
+  verifiedAt         DateTime?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city, isActive, isVerified])
+  @@index([lat, lng])
+  @@map("pethotel_profiles")
 }
 
 // ============================================================
@@ -677,9 +1024,32 @@ model Pet {
   weightCategory WeightCategory?
   gender        PetGender      @default(unknown)
   isNeutered    Boolean        @default(false)
+
+  // Microchip
+  hasMicrochip  Boolean  @default(false)
   microchipId   String?
+
+  // Photos — min 2, max 6 required by UI
   profilePhoto  String?
   photos        String[]
+
+  // Vaccination certificate
+  vaccinationCertPhoto String?   // uploaded document/photo URL
+  vaccinationVerified  Boolean   @default(false) // set by admin after review
+
+  // Special needs
+  medicalConditions String? // free text
+  specialNotes      String? // free text
+
+  // Feeding schedule: JSON array of { time: "08:00", notes?: string }
+  feedingSchedule Json @default("[]")
+
+  // Walking schedule: JSON array of { time: "07:00", durationMinutes?: number }
+  walkingSchedule Json @default("[]")
+
+  // Temperament (JSON)
+  temperament Json @default("{}") // { goodWithDogs, goodWithCats, goodWithChildren, isAnxious, aggressiveTendencies, notes }
+
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -732,25 +1102,25 @@ model PetVaccination {
   createdAt        DateTime @default(now())
 
   @@index([petId])
-  @@index([expiryDate]) // For expiry reminders
+  @@index([expiryDate])
   @@map("pet_vaccinations")
 }
 
 model PetMedication {
-  id          String               @id @default(uuid())
-  petId       String
-  pet         Pet                  @relation(fields: [petId], references: [id], onDelete: Cascade)
-  name            String
-  medicationType  MedicationType      @default(pill)
-  dosage          String?
-  unit            String?
-  frequency       MedicationFrequency
-  adminTimes      String[]             // ["08:00", "20:00"]
-  startDate   DateTime?            @db.Date
-  endDate     DateTime?            @db.Date
-  notes       String?
-  isActive    Boolean              @default(true)
-  createdAt   DateTime             @default(now())
+  id             String              @id @default(uuid())
+  petId          String
+  pet            Pet                 @relation(fields: [petId], references: [id], onDelete: Cascade)
+  name           String
+  medicationType MedicationType      @default(pill)
+  dosage         String?
+  unit           String?
+  frequency      MedicationFrequency
+  adminTimes     String[]            // ["08:00", "20:00"]
+  startDate      DateTime?           @db.Date
+  endDate        DateTime?           @db.Date
+  notes          String?
+  isActive       Boolean             @default(true)
+  createdAt      DateTime            @default(now())
 
   @@index([petId, isActive])
   @@map("pet_medications")
@@ -778,7 +1148,7 @@ model PetSchedule {
   petId           String
   pet             Pet          @relation(fields: [petId], references: [id], onDelete: Cascade)
   scheduleType    ScheduleType
-  scheduledTime   String       // "08:00" (time of day)
+  scheduledTime   String       // "08:00"
   durationMinutes Int?
   foodType        String?
   foodAmount      String?
@@ -814,11 +1184,16 @@ model CareLog {
 // ============================================================
 
 model Booking {
-  id      String @id @default(uuid())
-  ownerId String
-  owner   User   @relation("BookingOwner", fields: [ownerId], references: [id])
-  sitterId String
-  sitter  User   @relation("BookingSitter", fields: [sitterId], references: [id])
+  id           String @id @default(uuid())
+  parentId     String                                    // was: ownerId
+  parent       User   @relation("BookingParent", fields: [parentId], references: [id])
+  petFriendId  String?                                   // null for Kennel/Trainer/PetHotel
+  petFriend    User?  @relation("BookingPetFriend", fields: [petFriendId], references: [id])
+
+  // Provider references (only one will be set based on serviceType)
+  trainerId    String?
+  kennelId     String?
+  petHotelId   String?
 
   bookingType  BookingType
   serviceType  ServiceType
@@ -841,8 +1216,12 @@ model Booking {
   commissionRate   Decimal @default(15.00) @db.Decimal(5, 2)
   commissionAmount Decimal @db.Decimal(10, 2)
   totalPrice       Decimal @db.Decimal(10, 2)
-  sitterPayout     Decimal @db.Decimal(10, 2)
+  providerPayout   Decimal @db.Decimal(10, 2)  // was: sitterPayout
   currency         String  @default("EGP")
+
+  // Overtime (PetFriend bookings)
+  overtimeMinutes Int     @default(0)
+  overtimeCharge  Decimal @default(0) @db.Decimal(8, 2)
 
   // Payment
   paymentStatus       PaymentStatus  @default(pending)
@@ -855,11 +1234,11 @@ model Booking {
   refundReason        String?
 
   // Cancellation
-  cancelledById     String?
-  cancelledBy       User?            @relation("CancelledBy", fields: [cancelledById], references: [id])
-  cancelledAt       DateTime?
+  cancelledById      String?
+  cancelledBy        User?            @relation("CancelledBy", fields: [cancelledById], references: [id])
+  cancelledAt        DateTime?
   cancellationReason String?
-  cancellationType  CancellationType?
+  cancellationType   CancellationType?
 
   // Pickup
   readyForPickupAt  DateTime?
@@ -867,22 +1246,23 @@ model Booking {
 
   // Instructions
   specialInstructions String?
-  ownerNotes          String?
+  parentNotes         String?  // was: ownerNotes
 
   // Pet snapshot (frozen at booking time)
   petSnapshot Json? // Array of pet summaries
 
   // Review
-  ownerReviewed  Boolean  @default(false)
-  sitterReviewed Boolean  @default(false)
-  reviewDeadline DateTime?
+  parentReviewed    Boolean  @default(false)  // was: ownerReviewed
+  providerReviewed  Boolean  @default(false)  // was: sitterReviewed
+  reviewDeadline    DateTime?
 
   // Routing
   routingAttempt Int    @default(1)
   routingHistory Json   @default("[]")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
 
   // Relations
   pets              BookingPet[]
@@ -892,14 +1272,31 @@ model Booking {
   walkSessions      WalkSession[]
   reviews           Review[]
   transactions      PaymentTransaction[]
-  payouts           SitterPayout[]
+  payouts           PetFriendPayout[]
   careLogs          CareLog[]
   overtimeLog       OvertimeLog?
+  endCode           BookingEndCode?      // 4-digit service end code
 
-  @@index([ownerId, status, createdAt(sort: Desc)])
-  @@index([sitterId, status, createdAt(sort: Desc)])
+  @@index([parentId, status, createdAt(sort: Desc)])
+  @@index([petFriendId, status, createdAt(sort: Desc)])
   @@index([status, requestedStart])
+  @@index([petFriendId])
+  @@index([paymentStatus])
+  @@index([parentId, status])
   @@map("bookings")
+}
+
+// 4-digit service end code — shown only to Parent, entered by PetFriend to end service
+model BookingEndCode {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  code      String   // 4-digit string e.g. "4821"
+  isUsed    Boolean  @default(false)
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("booking_end_codes")
 }
 
 model BookingPet {
@@ -929,22 +1326,22 @@ model BookingExtension {
 }
 
 model BookingDispute {
-  id             String            @id @default(uuid())
-  bookingId      String            @unique
-  booking        Booking           @relation(fields: [bookingId], references: [id])
-  openedById     String
-  reasonCategory DisputeCategory
-  description    String
-  evidenceUrls   String[]
-  status         DisputeStatus     @default(open)
-  resolution     DisputeResolution?
+  id              String            @id @default(uuid())
+  bookingId       String            @unique
+  booking         Booking           @relation(fields: [bookingId], references: [id])
+  openedById      String
+  reasonCategory  DisputeCategory
+  description     String
+  evidenceUrls    String[]
+  status          DisputeStatus     @default(open)
+  resolution      DisputeResolution?
   resolutionNotes String?
-  resolvedById   String?
-  resolvedAt     DateTime?
-  appealDeadline DateTime?
-  ownerAmount    Decimal?          @db.Decimal(10, 2)
-  sitterAmount   Decimal?          @db.Decimal(10, 2)
-  createdAt      DateTime          @default(now())
+  resolvedById    String?
+  resolvedAt      DateTime?
+  appealDeadline  DateTime?
+  parentAmount    Decimal?          @db.Decimal(10, 2)  // was: ownerAmount
+  providerAmount  Decimal?          @db.Decimal(10, 2)  // was: sitterAmount
+  createdAt       DateTime          @default(now())
 
   @@index([status, createdAt])
   @@map("booking_disputes")
@@ -955,48 +1352,48 @@ model BookingDispute {
 // ============================================================
 
 model BookingTask {
-  id          String     @id @default(uuid())
-  bookingId   String
-  booking     Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  petId       String?
-  pet         Pet?       @relation(fields: [petId], references: [id])
-  taskType    TaskType
-  taskName    String
-  scheduledAt DateTime
-  dueBy       DateTime
-  completedAt DateTime?
+  id            String     @id @default(uuid())
+  bookingId     String
+  booking       Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  petId         String?
+  pet           Pet?       @relation(fields: [petId], references: [id])
+  taskType      TaskType
+  taskName      String
+  scheduledAt   DateTime
+  dueBy         DateTime
+  completedAt   DateTime?
   completedById String?
-  photoUrl    String?
-  notes       String?
-  status      TaskStatus @default(pending)
-  alertSentOwner Boolean @default(false)
-  createdAt   DateTime   @default(now())
+  photoUrl      String?
+  notes         String?
+  status        TaskStatus @default(pending)
+  alertSentToParent Boolean @default(false)  // was: alertSentOwner
+  createdAt     DateTime   @default(now())
 
   walkSession WalkSession?
 
   @@index([bookingId, status, scheduledAt])
-  @@index([scheduledAt, status]) // For reminder cron
+  @@index([scheduledAt, status])
   @@map("booking_tasks")
 }
 
 model WalkSession {
-  id            String      @id @default(uuid())
-  taskId        String      @unique
-  task          BookingTask @relation(fields: [taskId], references: [id])
-  bookingId     String
-  booking       Booking     @relation(fields: [bookingId], references: [id])
-  petIds        String[]
-  sitterId      String
-  startTime     DateTime
-  endTime       DateTime?
-  totalDistanceM Int        @default(0)
-  durationSeconds Int       @default(0)
-  avgSpeedKmh   Decimal?   @db.Decimal(5, 2)
-  routeGeoJson  Json?      // GeoJSON LineString
-  isComplete    Boolean    @default(false)
-  isFraudFlagged Boolean   @default(false)
-  fraudReason   String?
-  createdAt     DateTime   @default(now())
+  id              String      @id @default(uuid())
+  taskId          String      @unique
+  task            BookingTask @relation(fields: [taskId], references: [id])
+  bookingId       String
+  booking         Booking     @relation(fields: [bookingId], references: [id])
+  petIds          String[]
+  petFriendId     String      // was: sitterId
+  startTime       DateTime
+  endTime         DateTime?
+  totalDistanceM  Int         @default(0)
+  durationSeconds Int         @default(0)
+  avgSpeedKmh     Decimal?    @db.Decimal(5, 2)
+  routeGeoJson    Json?
+  isComplete      Boolean     @default(false)
+  isFraudFlagged  Boolean     @default(false)
+  fraudReason     String?
+  createdAt       DateTime    @default(now())
 
   trackingPoints WalkTrackingPoint[]
 
@@ -1005,16 +1402,16 @@ model WalkSession {
 }
 
 model WalkTrackingPoint {
-  id           String      @id @default(uuid())
-  sessionId    String
-  session      WalkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  lat          Decimal     @db.Decimal(10, 8)
-  lng          Decimal     @db.Decimal(11, 8)
-  accuracyM    Decimal?    @db.Decimal(7, 2)
-  speedMs      Decimal?    @db.Decimal(5, 2)
-  altitudeM    Decimal?    @db.Decimal(8, 2)
-  recordedAt   DateTime
-  createdAt    DateTime    @default(now())
+  id         String      @id @default(uuid())
+  sessionId  String
+  session    WalkSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  lat        Decimal     @db.Decimal(10, 8)
+  lng        Decimal     @db.Decimal(11, 8)
+  accuracyM  Decimal?    @db.Decimal(7, 2)
+  speedMs    Decimal?    @db.Decimal(5, 2)
+  altitudeM  Decimal?    @db.Decimal(8, 2)
+  recordedAt DateTime
+  createdAt  DateTime    @default(now())
 
   @@index([sessionId, recordedAt])
   @@map("walk_tracking_points")
@@ -1036,7 +1433,7 @@ model PaymentTransaction {
   direction       TransactionDirection
   status          TransactionStatus    @default(pending)
   gateway         PaymentGateway?
-  gatewayRef      String?
+  gatewayRef      String?              @unique
   gatewayResponse Json?
   errorMessage    String?
   retryCount      Int                  @default(0)
@@ -1048,24 +1445,34 @@ model PaymentTransaction {
   @@map("payment_transactions")
 }
 
-model SitterPayout {
-  id           String       @id @default(uuid())
-  sitterId     String
-  sitter       User         @relation(fields: [sitterId], references: [id])
-  bookingId    String?
-  booking      Booking?     @relation(fields: [bookingId], references: [id])
-  amount       Decimal      @db.Decimal(10, 2)
-  payoutMethod PayoutMethod
-  destination  String?      // phone or account number (encrypted)
-  status       PayoutStatus @default(pending)
-  gatewayRef   String?
-  scheduledAt  DateTime?
-  processedAt  DateTime?
-  failureReason String?
-  createdAt    DateTime     @default(now())
+model PetFriendPayout {
+  id             String               @id @default(uuid())
+  petFriendId    String               // was: sitterId
+  petFriend      User                 @relation(fields: [petFriendId], references: [id])
+  bookingId      String?
+  booking        Booking?             @relation(fields: [bookingId], references: [id])
+  amount         Decimal              @db.Decimal(10, 2)
+  payoutMethod   ProviderPayoutMethod
+  destination    String?
+  status         PayoutStatus         @default(pending)
+  gatewayRef     String?
+  scheduledAt    DateTime?
+  processedAt    DateTime?
+  failureReason  String?
+  createdAt      DateTime             @default(now())
 
-  @@index([sitterId, status])
-  @@map("sitter_payouts")
+  @@index([petFriendId, status])
+  @@map("petfriend_payouts")
+}
+
+model ProcessedWebhookEvent {
+  id          String   @id @default(cuid())
+  eventId     String   @unique
+  provider    String
+  processedAt DateTime @default(now())
+
+  @@index([eventId])
+  @@map("processed_webhook_events")
 }
 
 // ============================================================
@@ -1073,24 +1480,24 @@ model SitterPayout {
 // ============================================================
 
 model Review {
-  id          String      @id @default(uuid())
-  bookingId   String
-  booking     Booking     @relation(fields: [bookingId], references: [id])
-  reviewerId  String
-  reviewer    User        @relation("Reviewer", fields: [reviewerId], references: [id])
-  revieweeId  String
-  reviewee    User        @relation("Reviewee", fields: [revieweeId], references: [id])
+  id           String      @id @default(uuid())
+  bookingId    String
+  booking      Booking     @relation(fields: [bookingId], references: [id])
+  reviewerId   String
+  reviewer     User        @relation("Reviewer", fields: [reviewerId], references: [id])
+  revieweeId   String
+  reviewee     User        @relation("Reviewee", fields: [revieweeId], references: [id])
   revieweeType RevieweeType
 
   overallRating        Decimal @db.Decimal(3, 2)
 
-  // Owner reviewing sitter
+  // Parent reviewing PetFriend/provider
   ratingCommunication  Decimal? @db.Decimal(3, 2)
   ratingReliability    Decimal? @db.Decimal(3, 2)
   ratingCareQuality    Decimal? @db.Decimal(3, 2)
   ratingValue          Decimal? @db.Decimal(3, 2)
 
-  // Sitter reviewing owner
+  // PetFriend reviewing Parent
   ratingPetBehavior    Decimal? @db.Decimal(3, 2)
   ratingCleanliness    Decimal? @db.Decimal(3, 2)
 
@@ -1113,15 +1520,15 @@ model Review {
 }
 
 model PetReview {
-  id                          String   @id @default(uuid())
-  bookingId                   String
-  sitterId                    String
-  petId                       String
-  pet                         Pet      @relation(fields: [petId], references: [id])
-  behaviorRating              Int
-  behaviorNotes               String?
-  isVisibleToFutureSitters    Boolean  @default(true)
-  createdAt                   DateTime @default(now())
+  id                        String   @id @default(uuid())
+  bookingId                 String
+  petFriendId               String   // was: sitterId
+  petId                     String
+  pet                       Pet      @relation(fields: [petId], references: [id])
+  behaviorRating            Int
+  behaviorNotes             String?
+  isVisibleToFuturePetFriends Boolean @default(true)  // was: isVisibleToFutureSitters
+  createdAt                 DateTime @default(now())
 
   @@index([petId])
   @@map("pet_reviews")
@@ -1164,66 +1571,31 @@ model Follow {
   @@map("follows")
 }
 
-model Playdate {
-  id           String   @id @default(uuid())
-  organizerId  String
-  title        String
-  description  String?
-  locationName String?
-  locationLat  Decimal? @db.Decimal(10, 8)
-  locationLng  Decimal? @db.Decimal(11, 8)
-  scheduledAt  DateTime
-  durationMin  Int?
-  maxAttendees Int?
-  isPublic     Boolean  @default(true)
-  petTypes     String[]
-  status       String   @default("open")
-  createdAt    DateTime @default(now())
-
-  attendees PlaydateAttendee[]
-
-  @@index([scheduledAt])
-  @@map("playdates")
-}
-
-model PlaydateAttendee {
-  playdateId  String
-  playdate    Playdate @relation(fields: [playdateId], references: [id], onDelete: Cascade)
-  userId      String
-  petIds      String[]
-  status      String   @default("pending")
-  respondedAt DateTime?
-  createdAt   DateTime @default(now())
-
-  @@id([playdateId, userId])
-  @@map("playdate_attendees")
-}
-
 // ============================================================
 // PLACES
 // ============================================================
 
 model Place {
-  id           String        @id @default(uuid())
-  name         String
-  category     PlaceCategory
-  address      String?
-  city         String?
-  district     String?
-  lat          Decimal       @db.Decimal(10, 8)
-  lng          Decimal       @db.Decimal(11, 8)
-  phone        String?
-  website      String?
-  openingHours Json?
-  petPolicy    String?
+  id              String        @id @default(uuid())
+  name            String
+  category        PlaceCategory
+  address         String?
+  city            String?
+  district        String?
+  lat             Decimal       @db.Decimal(10, 8)
+  lng             Decimal       @db.Decimal(11, 8)
+  phone           String?
+  website         String?
+  openingHours    Json?
+  petPolicy       String?
   petTypesAllowed String[]
-  photos       String[]
-  submittedById String?
-  isApproved   Boolean       @default(false)
-  approvedById String?
-  avgRating    Decimal       @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int           @default(0)
-  createdAt    DateTime      @default(now())
+  photos          String[]
+  submittedById   String?
+  isApproved      Boolean       @default(false)
+  approvedById    String?
+  avgRating       Decimal       @default(0.00) @db.Decimal(3, 2)
+  totalReviews    Int           @default(0)
+  createdAt       DateTime      @default(now())
 
   reviews PlaceReview[]
 
@@ -1257,7 +1629,7 @@ model LoyaltyTransaction {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   action      String
-  points      Int      // positive = earn, negative = redeem
+  points      Int
   referenceId String?
   description String?
   expiresAt   DateTime?
@@ -1268,29 +1640,30 @@ model LoyaltyTransaction {
 }
 
 // ============================================================
-// OFFERS (dynamic pricing negotiation)
+// OFFERS
 // ============================================================
 
 model Offer {
   id            String      @id @default(uuid())
-  ownerId       String
-  owner         User        @relation("OfferOwner", fields: [ownerId], references: [id])
-  sitterId      String
-  sitter        User        @relation("OfferSitter", fields: [sitterId], references: [id])
+  parentId      String                                    // was: ownerId
+  parent        User        @relation("OfferParent", fields: [parentId], references: [id])
+  petFriendId   String                                    // was: sitterId
+  petFriend     User        @relation("OfferPetFriend", fields: [petFriendId], references: [id])
   service       ServiceType
-  ownerPrice    Decimal     @db.Decimal(8, 2)
-  sitterCounter Decimal?    @db.Decimal(8, 2)
+  parentPrice   Decimal     @db.Decimal(8, 2)             // was: ownerPrice
+  providerCounter Decimal?  @db.Decimal(8, 2)             // was: sitterCounter
   finalPrice    Decimal?    @db.Decimal(8, 2)
   status        OfferStatus @default(PENDING)
-  round         Int         @default(1)   // 1 = initial, 2 = after counter
+  round         Int         @default(1)
   expiresAt     DateTime
-  bookingId     String?                   // set when offer is accepted → booking created
-  message       String?                   // optional message with offer
+  bookingId     String?
+  message       String?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
-  @@index([ownerId, status])
-  @@index([sitterId, status])
+  @@index([parentId])
+  @@index([petFriendId])
+  @@index([status])
   @@map("offers")
 }
 
@@ -1313,38 +1686,8 @@ model AdminAction {
 }
 
 // ============================================================
-// PROVIDERS (Trainers, Kennels, Groomers, Vets, Shops, Food Sellers)
+// PROVIDERS (generic profile for Trainers, Kennels, Groomers, Vets, Shops)
 // ============================================================
-
-enum ProviderType {
-  SITTER
-  TRAINER
-  KENNEL
-  GROOMER
-  VET
-  SHOP
-  FOOD_SELLER
-}
-
-enum VerificationStatus {
-  PENDING
-  APPROVED
-  REJECTED
-}
-
-enum OrderStatus {
-  PENDING
-  CONFIRMED
-  PREPARING
-  READY
-  COMPLETED
-  CANCELLED
-}
-
-enum DeliveryType {
-  DELIVERY
-  PICKUP
-}
 
 model ProviderProfile {
   id           String       @id @default(uuid())
@@ -1352,28 +1695,23 @@ model ProviderProfile {
   user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   providerType ProviderType
 
-  // Business info
   businessName String
   tagline      String?
   description  String?
 
-  // Location
   address   String?
   latitude  Decimal? @db.Decimal(10, 8)
   longitude Decimal? @db.Decimal(11, 8)
   city      String?
   phone     String?
 
-  // Media
   coverPhotos      String[] @default([])
   verificationDocs String[] @default([])
 
-  // Flexible service data per provider type
-  serviceMenu    Json? // array of { name, price, duration?, description? }
-  operatingHours Json? // { mon: { open: "09:00", close: "18:00", closed: false }, ... }
-  maxCapacity    Int?  // for kennels
+  serviceMenu    Json?
+  operatingHours Json?
+  maxCapacity    Int?
 
-  // Verification
   verificationStatus VerificationStatus @default(PENDING)
   isVerified         Boolean            @default(false)
   verifiedAt         DateTime?
@@ -1401,8 +1739,8 @@ model Product {
   description   String?
   price         Decimal  @db.Decimal(8, 2)
   photos        String[] @default([])
-  ingredients   String?  // for food sellers
-  allergens     String?  // for food sellers
+  ingredients   String?
+  allergens     String?
   stockQuantity Int      @default(0)
   isAvailable   Boolean  @default(true)
   sellerType    ProviderType
@@ -1429,16 +1767,16 @@ model Order {
   platformFee   Decimal     @db.Decimal(10, 2)
   sellerEarning Decimal     @db.Decimal(10, 2)
 
-  status          OrderStatus  @default(PENDING)
-  deliveryType    DeliveryType
+  status          String       // OrderStatus enum values
+  deliveryType    String       // DELIVERY | PICKUP
   deliveryAddress String?
   notes           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([buyerId, status])
-  @@index([sellerId, status])
+  @@index([buyerId])
+  @@index([sellerId])
   @@map("orders")
 }
 
@@ -1455,7 +1793,7 @@ model OrderItem {
 }
 
 // ============================================================
-// GEO-LOCKED PICKUP & OVERTIME CHARGING
+// OVERTIME CHARGING
 // ============================================================
 
 model OvertimeLog {
@@ -1488,14 +1826,13 @@ model AuditLog {
 }
 
 // ============================================================
-// ADOPTION & CAUSES COMMUNITY
+// DEFERRED: ADOPTION & CAUSES COMMUNITY — reintroduce post-launch
 // ============================================================
 
 model AdoptionPost {
   id            String         @id @default(uuid())
   posterId      String
   poster        User           @relation("AdoptionPoster", fields: [posterId], references: [id])
-
   petName       String
   species       Species
   breed         String?
@@ -1505,24 +1842,19 @@ model AdoptionPost {
   isVaccinated  Boolean        @default(false)
   description   String
   photos        String[]       @default([])
-
   district      String?
   city          String         @default("Cairo")
-
   requirements  String?
   contactMethod ContactMethod  @default(in_app)
   contactPhone  String?
-
   status        AdoptionStatus @default(available)
   deletedAt     DateTime?
-
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  messages      AdoptionMessage[]
+  messages AdoptionMessage[]
 
   @@index([status, species, createdAt(sort: Desc)])
-  @@index([district, species, status])
   @@map("adoption_posts")
 }
 
@@ -1539,7 +1871,6 @@ model AdoptionMessage {
   createdAt  DateTime     @default(now())
 
   @@index([postId, senderId, receiverId])
-  @@index([receiverId, isRead])
   @@map("adoption_messages")
 }
 
@@ -1547,36 +1878,30 @@ model Cause {
   id              String        @id @default(uuid())
   creatorId       String
   creator         User          @relation("CauseCreator", fields: [creatorId], references: [id])
-
   title           String
   description     String
   category        CauseCategory
   coverPhoto      String?
   photos          String[]      @default([])
-
   goalAmount      Decimal       @db.Decimal(10, 2)
   raisedAmount    Decimal       @default(0.00) @db.Decimal(10, 2)
   donorCount      Int           @default(0)
   endDate         DateTime
-
   status          CauseStatus   @default(pending_approval)
   rejectionReason String?
   approvedById    String?
   approvedAt      DateTime?
-
   withdrawalMethod  String?
   withdrawalAccount String?
-
   deletedAt       DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
-  donations           Donation[]
-  updates             CauseUpdate[]
-  withdrawalRequests  WithdrawalRequest[]
+  donations          Donation[]
+  updates            CauseUpdate[]
+  withdrawalRequests WithdrawalRequest[]
 
   @@index([status, endDate])
-  @@index([category, status])
   @@map("causes")
 }
 
@@ -1592,7 +1917,6 @@ model Donation {
   createdAt   DateTime @default(now())
 
   @@index([causeId, createdAt(sort: Desc)])
-  @@index([donorId])
   @@map("donations")
 }
 
@@ -1609,21 +1933,20 @@ model CauseUpdate {
 }
 
 model WithdrawalRequest {
-  id             String           @id @default(uuid())
-  causeId        String
-  cause          Cause            @relation(fields: [causeId], references: [id])
-  requestedById  String
-  requestedBy    User             @relation("WithdrawalRequester", fields: [requestedById], references: [id])
-  amount         Decimal          @db.Decimal(10, 2)
-  method         String
-  destination    String
-  status         WithdrawalStatus @default(pending)
-  adminNotes     String?
-  reviewedAt     DateTime?
-  createdAt      DateTime         @default(now())
+  id            String           @id @default(uuid())
+  causeId       String
+  cause         Cause            @relation(fields: [causeId], references: [id])
+  requestedById String
+  requestedBy   User             @relation("WithdrawalRequester", fields: [requestedById], references: [id])
+  amount        Decimal          @db.Decimal(10, 2)
+  method        String
+  destination   String
+  status        WithdrawalStatus @default(pending)
+  adminNotes    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
 
   @@index([causeId])
-  @@index([status, createdAt])
   @@map("withdrawal_requests")
 }
 
@@ -1639,7 +1962,7 @@ model FoodSeller {
   bio          String?
   district     String?
   profilePhoto String?
-  availability Json      // { days: string[], note: string }
+  availability Json
   avgRating    Decimal   @default(0.00) @db.Decimal(3, 2)
   totalReviews Int       @default(0)
   totalSales   Int       @default(0)
@@ -1647,9 +1970,9 @@ model FoodSeller {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  products          FoodProduct[]
-  ordersAsSeller    FoodOrder[]   @relation("FoodSellerOrders")
-  reviewsReceived   FoodReview[]  @relation("FoodSellerReviewed")
+  products       FoodProduct[]
+  ordersAsSeller FoodOrder[]   @relation("FoodSellerOrders")
+  reviewsReceived FoodReview[] @relation("FoodSellerReviewed")
 
   @@index([isActive, district])
   @@map("food_sellers")
@@ -1679,7 +2002,6 @@ model FoodProduct {
   reviews    FoodReview[]    @relation("FoodProductReviewed")
 
   @@index([sellerId, isAvailable])
-  @@index([targetAnimal, isAvailable])
   @@map("food_products")
 }
 
@@ -1701,10 +2023,12 @@ model FoodOrder {
   pickedUpAt    DateTime?
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
+  deletedAt     DateTime?
 
   items   FoodOrderItem[]
   reviews FoodReview[]    @relation("FoodOrderReviews")
 
+  @@index([buyerId])
   @@index([buyerId, status, createdAt(sort: Desc)])
   @@index([sellerId, status, createdAt(sort: Desc)])
   @@map("food_orders")

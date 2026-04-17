@@ -20,8 +20,8 @@ export class UsersService {
         lastName: true,
         displayName: true,
         profilePhoto: true,
-        isOwner: true,
-        isSitter: true,
+        isParent: true,
+        isPetFriend: true,
         activeRole: true,
         loyaltyTier: true,
         walletBalance: true,
@@ -30,7 +30,7 @@ export class UsersService {
       },
     });
     if (!user) throw new NotFoundException('User not found');
-    return user;
+    return { ...user, walletBalance: Number(user.walletBalance) };
   }
 
   async findByPhone(phone: string) {
@@ -38,7 +38,7 @@ export class UsersService {
   }
 
   async getMe(userId: string) {
-    return this.prisma.user.findUnique({
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -48,8 +48,8 @@ export class UsersService {
         email: true,
         profilePhoto: true,
         activeRole: true,
-        isOwner: true,
-        isSitter: true,
+        isParent: true,
+        isPetFriend: true,
         idVerified: true,
         walletBalance: true,
         outstandingBalance: true,
@@ -59,6 +59,12 @@ export class UsersService {
         loyaltyPoints: true,
       },
     });
+    if (!user) return null;
+    return {
+      ...user,
+      walletBalance: Number(user.walletBalance),
+      outstandingBalance: Number(user.outstandingBalance),
+    };
   }
 
   async updateMe(userId: string, data: { firstName?: string; lastName?: string; email?: string; language?: string }) {
@@ -72,15 +78,15 @@ export class UsersService {
         email: true,
         language: true,
         activeRole: true,
-        isOwner: true,
-        isSitter: true,
+        isParent: true,
+        isPetFriend: true,
       },
     });
   }
 
   async switchRole(userId: string, activeRole: 'owner' | 'sitter') {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (activeRole === 'sitter' && !user?.isSitter) {
+    if (activeRole === 'sitter' && !user?.isPetFriend) {
       throw new BadRequestException('You are not registered as a sitter');
     }
     return this.prisma.user.update({
@@ -123,18 +129,17 @@ export class UsersService {
   }
 
   async registerFcmToken(userId: string, fcmToken: string, deviceType: 'ios' | 'android'): Promise<void> {
-    // Deactivate any existing record for this exact token (handles re-registration)
-    await this.prisma.userDevice.updateMany({
-      where: { userId, fcmToken },
-      data: { isActive: false },
-    });
-    await this.prisma.userDevice.create({
-      data: {
-        userId,
-        fcmToken,
-        deviceType: deviceType as any,
-        isActive: true,
-      },
-    });
+    // Upsert: if this exact token already exists, just re-activate it; otherwise create
+    const existing = await this.prisma.userDevice.findFirst({ where: { fcmToken } });
+    if (existing) {
+      await this.prisma.userDevice.update({
+        where: { id: existing.id },
+        data: { userId, deviceType: deviceType as any, isActive: true },
+      });
+    } else {
+      await this.prisma.userDevice.create({
+        data: { userId, fcmToken, deviceType: deviceType as any, isActive: true },
+      });
+    }
   }
 }

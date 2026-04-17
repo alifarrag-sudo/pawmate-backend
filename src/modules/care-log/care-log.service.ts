@@ -16,14 +16,14 @@ export class CareLogService {
     });
   }
 
-  async markComplete(sitterId: string, careLogId: string, notes?: string) {
+  async markComplete(petFriendId: string, careLogId: string, notes?: string) {
     const log = await this.prisma.careLog.findUnique({ where: { id: careLogId } });
     if (!log) throw new NotFoundException('Care log entry not found');
     return this.prisma.careLog.update({
       where: { id: careLogId },
       data: {
         completedAt: new Date(),
-        completedById: sitterId,
+        completedById: petFriendId,
         notes: notes || null,
       },
     });

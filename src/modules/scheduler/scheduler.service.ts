@@ -6,6 +6,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { MatchingService } from '../bookings/matching.service';
 import { BookingsService } from '../bookings/bookings.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { CAIRO_TIMEZONE, utcToCairo } from '../../common/utils/timezone.util';
 
 @Injectable()
 export class SchedulerService {
@@ -103,16 +104,16 @@ export class SchedulerService {
       // Notify sitter and owner
       const task = await this.prisma.bookingTask.findUnique({
         where: { id: session.taskId },
-        include: { booking: { select: { ownerId: true } } },
+        include: { booking: { select: { parentId: true } } },
       });
 
       if (task) {
-        await this.notifications.sendPushToUser(session.sitterId, {
+        await this.notifications.sendPushToUser(session.petFriendId, {
           title: 'Walk Session Auto-Closed',
           body: 'Your walk session was automatically closed after 3 hours.',
           data: { type: 'walk_auto_closed', sessionId: session.id },
         });
-        await this.notifications.sendPushToUser(task.booking.ownerId, {
+        await this.notifications.sendPushToUser(task.booking.parentId, {
           title: 'Walk Session Auto-Closed',
           body: 'The walk session was automatically closed.',
           data: { type: 'walk_auto_closed', sessionId: session.id },
@@ -122,13 +123,15 @@ export class SchedulerService {
   }
 
   // ============================================================
-  // Daily at 3:00 AM: Vaccination expiry reminders
+  // Daily at 3:00 AM Cairo time: Vaccination expiry reminders
+  // Note: Africa/Cairo is UTC+2 — cron runs at 01:00 UTC (= 03:00 Cairo)
   // ============================================================
-  @Cron('0 0 3 * * *')
+  @Cron('0 0 1 * * *', { timeZone: CAIRO_TIMEZONE })
   async checkVaccinationExpiry() {
     this.logger.log('Running vaccination expiry check...');
 
-    const today = new Date();
+    // Use current Cairo date as reference to avoid UTC/local mismatch
+    const today = utcToCairo(new Date());
     const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
     const in7Days = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -179,7 +182,7 @@ export class SchedulerService {
 
     const recentlyReviewedSitters = await this.prisma.review.findMany({
       where: {
-        revieweeType: 'sitter',
+        revieweeType: 'petfriend',
         isPublished: true,
         publishedAt: { gte: since },
       },
@@ -203,7 +206,7 @@ export class SchedulerService {
     const bookingsWithPendingReviews = await this.prisma.booking.findMany({
       where: {
         reviewDeadline: { lt: now },
-        OR: [{ ownerReviewed: true }, { sitterReviewed: true }],
+        OR: [{ parentReviewed: true }, { providerReviewed: true }],
       },
       include: {
         reviews: { where: { isPublished: false } },
@@ -224,10 +227,11 @@ export class SchedulerService {
   // ============================================================
   // Every 5 minutes: Task reminders for active bookings
   // ============================================================
-  @Cron('0 */5 * * * *')
+  @Cron('0 */5 * * * *', { timeZone: CAIRO_TIMEZONE })
   async sendTaskReminders() {
     const now = new Date();
     const in5Minutes = new Date(now.getTime() + 5 * 60 * 1000);
+    // Tasks are stored in UTC; comparison is timezone-agnostic (both are UTC)
 
     // Find tasks coming up in the next 5 minutes that haven't sent reminders
     const upcomingTasks = await this.prisma.bookingTask.findMany({
@@ -237,13 +241,13 @@ export class SchedulerService {
         booking: { status: 'active' },
       },
       include: {
-        booking: { select: { sitterId: true, ownerId: true } },
+        booking: { select: { petFriendId: true, parentId: true } },
         pet: { select: { name: true } },
       },
     });
 
     for (const task of upcomingTasks) {
-      await this.notifications.sendPushToUser(task.booking.sitterId, {
+      await this.notifications.sendPushToUser(task.booking.petFriendId, {
         title: `Upcoming Task: ${task.taskName}`,
         body: `${task.taskName} is scheduled in 5 minutes.`,
         data: { type: 'task_reminder', taskId: task.id, bookingId: task.bookingId },
@@ -255,11 +259,11 @@ export class SchedulerService {
       where: {
         status: 'pending',
         dueBy: { lt: now },
-        alertSentOwner: false,
+        alertSentToParent: false,
         booking: { status: 'active' },
       },
       include: {
-        booking: { select: { ownerId: true, sitterId: true } },
+        booking: { select: { parentId: true, petFriendId: true } },
         pet: { select: { name: true } },
       },
     });
@@ -267,7 +271,7 @@ export class SchedulerService {
     for (const task of overdueTasks) {
       const isUrgent = task.taskType === 'medication';
 
-      await this.notifications.sendPushToUser(task.booking.ownerId, {
+      await this.notifications.sendPushToUser(task.booking.parentId, {
         title: isUrgent ? '⚠️ Urgent: Missed Task!' : 'Task Overdue',
         body: `${task.taskName} for ${task.pet?.name || 'your pet'} was not completed on time.`,
         data: { type: 'task_overdue', taskId: task.id, bookingId: task.bookingId },
@@ -275,7 +279,7 @@ export class SchedulerService {
 
       await this.prisma.bookingTask.update({
         where: { id: task.id },
-        data: { alertSentOwner: true },
+        data: { alertSentToParent: true },
       });
     }
   }
@@ -303,8 +307,8 @@ export class SchedulerService {
         overtimeLog: { is: null },
       } as any,
       include: {
-        owner: { select: { id: true, firstName: true } },
-        sitter: { select: { id: true, firstName: true } },
+        parent: { select: { id: true, firstName: true } },
+        petFriend: { select: { id: true, firstName: true } },
       },
     });
 
@@ -407,14 +411,14 @@ export class SchedulerService {
   // HELPER: Recalculate sitter metrics
   // ============================================================
   private async recalculateSitterMetrics(sitterUserId: string): Promise<void> {
-    const profile = await this.prisma.sitterProfile.findUnique({
+    const profile = await this.prisma.petFriendProfile.findUnique({
       where: { userId: sitterUserId },
     });
     if (!profile) return;
 
     // Get last 50 published reviews
     const reviews = await this.prisma.review.findMany({
-      where: { revieweeId: sitterUserId, revieweeType: 'sitter', isPublished: true },
+      where: { revieweeId: sitterUserId, revieweeType: 'petfriend', isPublished: true },
       orderBy: { publishedAt: 'desc' },
       take: 50,
     });
@@ -431,14 +435,14 @@ export class SchedulerService {
 
     // Reliability: completed bookings / total accepted bookings
     const totalBookings = await this.prisma.booking.count({
-      where: { sitterId: sitterUserId, status: { in: ['completed', 'cancelled'] } },
+      where: { petFriendId: sitterUserId, status: { in: ['completed', 'cancelled'] } },
     });
     const completedBookings = await this.prisma.booking.count({
-      where: { sitterId: sitterUserId, status: 'completed' },
+      where: { petFriendId: sitterUserId, status: 'completed' },
     });
     const reliabilityScore = totalBookings > 0 ? (completedBookings / totalBookings) * 100 : 100;
 
-    await this.prisma.sitterProfile.update({
+    await this.prisma.petFriendProfile.update({
       where: { id: profile.id },
       data: {
         avgRating: Number(avgRating.toFixed(2)),

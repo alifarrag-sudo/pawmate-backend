@@ -25,6 +25,7 @@ import { ProvidersModule } from './modules/providers/providers.module';
 import { AdoptionModule } from './modules/adoption/adoption.module';
 import { CausesModule } from './modules/causes/causes.module';
 import { FoodModule } from './modules/food/food.module';
+import { HealthModule } from './modules/health/health.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { FoodModule } from './modules/food/food.module';
     AdoptionModule,
     CausesModule,
     FoodModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

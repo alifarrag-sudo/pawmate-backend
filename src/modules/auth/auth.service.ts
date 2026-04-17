@@ -44,7 +44,7 @@ export class AuthService {
         const otp = generateOTP(6);
         const otpHash = hashValue(otp);
         await this.redis.setex(`otp:${dto.phone}`, OTP_TTL_SECONDS, otpHash);
-        if (this.configService.get('NODE_ENV') === 'development') {
+        if (process.env.NODE_ENV !== 'production') {
           this.logger.debug(`[DEV] OTP for ${dto.phone}: ${otp}`);
           return { userId: existingPhone.id, message: `OTP resent to ${dto.phone}`, devOtp: otp };
         }
@@ -73,9 +73,9 @@ export class AuthService {
         passwordHash,
         firstName: dto.firstName,
         lastName: dto.lastName,
-        isOwner: dto.role === 'owner' || dto.role === 'both',
-        isSitter: dto.role === 'sitter' || dto.role === 'both',
-        activeRole: dto.role === 'sitter' ? 'sitter' : 'owner',
+        isParent: dto.role === 'owner' || dto.role === 'both',
+        isPetFriend: dto.role === 'sitter' || dto.role === 'both',
+        activeRole: dto.role === 'sitter' ? 'petfriend' : 'parent',
         language: dto.language || 'ar',
       },
     });
@@ -85,8 +85,8 @@ export class AuthService {
     const otpHash = hashValue(otp);
     await this.redis.setex(`otp:${dto.phone}`, OTP_TTL_SECONDS, otpHash);
 
-    // In development, skip SMS and return OTP directly
-    if (this.configService.get('NODE_ENV') === 'development') {
+    // In non-production, skip SMS and return OTP directly
+    if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(`[DEV] OTP for ${dto.phone}: ${otp}`);
       return {
         userId: user.id,
@@ -271,12 +271,16 @@ export class AuthService {
 
     this.logger.log(`OTP sent to ${phone}`);
 
-    // In development, log the OTP for testing
-    if (this.configService.get('NODE_ENV') === 'development') {
+    // In non-production, log the OTP for testing
+    if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(`[DEV] OTP for ${phone}: ${otp}`);
     }
 
-    return { message: 'OTP sent successfully.' };
+    const response: any = { message: 'OTP sent successfully.' };
+    if (process.env.NODE_ENV !== 'production') {
+      response.devOtp = otp;
+    }
+    return response;
   }
 
   async changePassword(userId: string, currentPassword: string, newPassword: string) {
@@ -334,9 +338,9 @@ export class AuthService {
           phone: null as any, // Google users may not have a phone
           passwordHash: await bcrypt.hash(generateSecureToken(32), SALT_ROUNDS),
           role: 'user',
-          activeRole: 'owner',
-          isOwner: true,
-          isSitter: false,
+          activeRole: 'parent',
+          isParent: true,
+          isPetFriend: false,
           phoneVerified: true, // email-verified via Google
           language: 'en',
         },
@@ -353,8 +357,8 @@ export class AuthService {
         email: user.email,
         phone: user.phone,
         activeRole: user.activeRole,
-        isOwner: user.isOwner,
-        isSitter: user.isSitter,
+        isParent: user.isParent,
+        isPetFriend: user.isPetFriend,
         role: user.role,
       },
     };
@@ -426,8 +430,8 @@ export class AuthService {
         phone: user.phone,
         email: user.email,
         activeRole: user.activeRole,
-        isOwner: user.isOwner,
-        isSitter: user.isSitter,
+        isParent: user.isParent,
+        isPetFriend: user.isPetFriend,
         idVerified: user.idVerified,
         loyaltyTier: user.loyaltyTier,
         loyaltyPoints: user.loyaltyPoints,

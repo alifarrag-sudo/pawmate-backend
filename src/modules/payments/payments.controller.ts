@@ -21,8 +21,8 @@ export class PaymentsController {
   }
 
   @Post('wallet/top-up')
-  topUpWallet(@Request() req: any, @Body('amount') amount: number) {
-    return this.paymentsService.topUpWallet(req.user?.id, amount);
+  topUpWallet(@Request() req: any, @Body('amount') amount: number, @Body('paymentMethod') paymentMethod: string) {
+    return this.paymentsService.topUpWallet(req.user?.id, amount, paymentMethod);
   }
 
   @Get('history')
@@ -32,7 +32,7 @@ export class PaymentsController {
 
   @Get('payouts')
   getPayouts(@Request() req: any) {
-    return this.paymentsService.getPayoutHistory(req.user?.id);
+    return this.paymentsService.getPayoutHistory(req.user?.id, req.user?.id);
   }
 
   @Post('payouts/withdraw')

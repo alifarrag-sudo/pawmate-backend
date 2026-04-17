@@ -96,4 +96,18 @@ export class BookingsController {
   forceComplete(@Request() req: any, @Param('id') id: string, @Body('reason') reason: string) {
     return this.bookingsService.forceComplete(req.user?.id, id, reason);
   }
+
+  // ── BookingEndCode ─────────────────────────────────────────────────────────
+
+  /** Parent fetches the 4-digit service-end code for an active booking. */
+  @Get(':id/end-code')
+  getEndCode(@Request() req: any, @Param('id') id: string) {
+    return this.bookingsService.getEndCode(req.user?.id, id);
+  }
+
+  /** PetFriend submits the 4-digit code to complete the service. */
+  @Post(':id/verify-end-code')
+  verifyEndCode(@Request() req: any, @Param('id') id: string, @Body('code') code: string) {
+    return this.bookingsService.verifyEndCode(req.user?.id, id, code);
+  }
 }

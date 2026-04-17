@@ -2,6 +2,7 @@ import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { v2 as cloudinary } from 'cloudinary';
 import sharp from 'sharp';
+import { Request } from 'express';
 
 export type UploadFolder = 'profile_photos' | 'pet_photos' | 'social_posts' | 'id_documents';
 
@@ -14,12 +15,74 @@ export interface UploadResult {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
+// FIX 6: Allowed MIME types
+const ALLOWED_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+];
+
+const ALLOWED_DOCUMENT_MIME_TYPES = [
+  ...ALLOWED_IMAGE_MIME_TYPES,
+  'application/pdf', // For vet certificates and licences only
+];
+
+/**
+ * Multer file filter — accepts images only (no PDFs).
+ * Use for: pet photos, profile photos, social posts, product photos.
+ */
+export const imageOnlyFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  callback: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  if (!ALLOWED_IMAGE_MIME_TYPES.includes(file.mimetype)) {
+    return callback(
+      new BadRequestException(
+        `File type not allowed. Accepted formats: jpg, png, webp, gif`,
+      ),
+      false,
+    );
+  }
+  callback(null, true);
+};
+
+/**
+ * Multer file filter — accepts images and PDFs.
+ * Use for: ID documents, vet certificates, licences.
+ */
+export const documentFileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  callback: (error: Error | null, acceptFile: boolean) => void,
+) => {
+  if (!ALLOWED_DOCUMENT_MIME_TYPES.includes(file.mimetype)) {
+    return callback(
+      new BadRequestException(
+        `File type not allowed. Accepted formats: jpg, png, webp, gif, pdf`,
+      ),
+      false,
+    );
+  }
+  callback(null, true);
+};
+
+/**
+ * Standard multer limits for all upload endpoints.
+ */
+export const uploadLimits = {
+  fileSize: MAX_FILE_SIZE,
+  files: 10,
+};
+
 @Injectable()
 export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
   private readonly ready: boolean;
 
-  constructor(private config: ConfigService) {
+  constructor(config: ConfigService) {
     const cloudName = config.get('CLOUDINARY_CLOUD_NAME');
     const ready = cloudName && !cloudName.startsWith('your-');
 
