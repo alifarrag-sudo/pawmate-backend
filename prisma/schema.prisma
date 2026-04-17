@@ -450,7 +450,7 @@ enum HomeType {
 model User {
   id           String   @id @default(uuid())
   phone        String?  @unique  // optional — email-first auth; phone added later for SMS verify
-  email        String   @unique  // required — primary identifier
+  email        String?  @unique  // nullable for legacy phone-only users; enforced required at DTO level
   passwordHash String?           // null for social-login users (Google/Facebook)
   firstName    String
   lastName     String
