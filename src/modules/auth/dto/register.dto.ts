@@ -31,9 +31,16 @@ export class RegisterDto {
   @MaxLength(100)
   password: string;
 
-  @ApiPropertyOptional({ enum: ['PARENT', 'PETFRIEND', 'BOTH'], example: 'PARENT' })
+  @ApiPropertyOptional({
+    enum: ['PARENT', 'PETFRIEND', 'BOTH', 'TRAINER', 'KENNEL', 'PETHOTEL', 'SHOP'],
+    example: 'PARENT',
+  })
   @IsOptional()
-  @IsIn(['PARENT', 'PETFRIEND', 'BOTH', 'parent', 'petfriend', 'both', 'owner', 'sitter'])
+  @IsIn([
+    'PARENT', 'PETFRIEND', 'BOTH', 'TRAINER', 'KENNEL', 'PETHOTEL', 'SHOP',
+    'parent', 'petfriend', 'both', 'trainer', 'kennel', 'pethotel', 'shop',
+    'owner', 'sitter',
+  ])
   role?: string;
 
   @ApiPropertyOptional({ enum: ['ar', 'en'], example: 'en' })

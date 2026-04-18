@@ -29,8 +29,12 @@ const OTP_RATE_LIMIT_MAX = 5;
 function rolesFromLegacy(role?: string): string[] {
   if (!role) return ['PARENT'];
   const r = role.toLowerCase();
-  if (r === 'sitter' || r === 'petfriend') return ['PARENT', 'PETFRIEND'];
+  if (r === 'sitter' || r === 'petfriend') return ['PETFRIEND'];
   if (r === 'both') return ['PARENT', 'PETFRIEND'];
+  if (r === 'trainer') return ['TRAINER'];
+  if (r === 'kennel') return ['KENNEL'];
+  if (r === 'pethotel') return ['PETHOTEL'];
+  if (r === 'shop') return ['SHOP'];
   return ['PARENT'];
 }
 
@@ -95,9 +99,9 @@ export class AuthService {
         lastName: dto.lastName.trim(),
         authProvider: 'email',
         roles,
-        isParent: true,
+        isParent: roles.includes('PARENT'),
         isPetFriend: roles.includes('PETFRIEND'),
-        activeRole: roles.includes('PETFRIEND') ? 'petfriend' : 'parent',
+        activeRole: roles[0]?.toLowerCase() ?? 'parent',
         language: dto.language || 'en',
         emailVerified: false,
       },
