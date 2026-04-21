@@ -326,24 +326,24 @@ export class SchedulerService {
         },
       });
 
-      const owner = (booking as any).owner;
-      const sitter = (booking as any).sitter;
+      const parent = booking.parent;
+      const petFriend = booking.petFriend;
 
-      await this.notifications.sendPushToUser(sitter.id, {
+      await this.notifications.sendPushToUser(petFriend.id, {
         title: '⏰ Owner is Late — Overtime Started',
         body: 'The owner has not arrived within the 15-minute window. Overtime charges are now active.',
         data: { type: 'overtime_started', bookingId: booking.id },
       });
 
-      await this.notifications.sendPushToUser(owner.id, {
+      await this.notifications.sendPushToUser(parent.id, {
         title: '⚠️ You Are Late — Overtime Charges Apply',
         body: 'You are past the 15-minute pickup window. Overtime charges are now accruing.',
         data: { type: 'overtime_started', bookingId: booking.id },
       });
 
       await Promise.all([
-        this.notifications.saveNotification(sitter.id, 'overtime_started', '⏰ Owner is Late', 'Overtime charges are active.', { bookingId: booking.id }),
-        this.notifications.saveNotification(owner.id, 'overtime_started', '⚠️ Overtime Charges Apply', 'You are past the pickup window.', { bookingId: booking.id }),
+        this.notifications.saveNotification(petFriend.id, 'overtime_started', '⏰ Owner is Late', 'Overtime charges are active.', { bookingId: booking.id }),
+        this.notifications.saveNotification(parent.id, 'overtime_started', '⚠️ Overtime Charges Apply', 'You are past the pickup window.', { bookingId: booking.id }),
       ]);
     }
   }
@@ -358,8 +358,8 @@ export class SchedulerService {
       include: {
         booking: {
           include: {
-            owner: { select: { id: true } },
-            sitter: { select: { id: true } },
+            parent: { select: { id: true } },
+            petFriend: { select: { id: true } },
           },
         },
       },
@@ -392,14 +392,14 @@ export class SchedulerService {
 
       // Notify owner at each new 30-min increment
       if (currentIncrements > prevIncrements && currentIncrements > 0) {
-        const owner = (booking as any).owner;
-        await this.notifications.sendPushToUser(owner.id, {
+        const parent = booking.parent;
+        await this.notifications.sendPushToUser(parent.id, {
           title: `⏱️ Overtime: ${totalCharge} EGP`,
           body: `You're ${currentMinutes} minute(s) late. Cumulative overtime charge: ${totalCharge} EGP.`,
           data: { type: 'overtime_increment', bookingId: booking.id, totalCharge: String(totalCharge), currentMinutes: String(currentMinutes) },
         });
         await this.notifications.saveNotification(
-          owner.id, 'overtime_increment', `⏱️ Overtime: ${totalCharge} EGP`,
+          parent.id, 'overtime_increment', `⏱️ Overtime: ${totalCharge} EGP`,
           `${currentMinutes} minutes late — cumulative charge: ${totalCharge} EGP`,
           { bookingId: booking.id, totalCharge },
         );
