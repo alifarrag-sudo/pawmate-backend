@@ -5,6 +5,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CausesService } from './causes.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CommunityGuard } from '../../common/guards/community.guard';
+import { AdminGuard } from '../../common/guards/admin.guard';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('causes')
@@ -34,17 +35,20 @@ export class CausesController {
     return this.causesService.getMine(req.user?.id);
   }
 
-  // Admin endpoints
+  // Admin endpoints — require admin role
+  @UseGuards(AdminGuard)
   @Get('admin/pending')
   adminPending(@Request() req: any) {
     return this.causesService.adminListPending(req.user?.id);
   }
 
+  @UseGuards(AdminGuard)
   @Get('admin/withdrawals')
   adminWithdrawals(@Request() req: any) {
     return this.causesService.adminListWithdrawals(req.user?.id);
   }
 
+  @UseGuards(AdminGuard)
   @Patch('admin/withdrawals/:wid/approve')
   adminApproveWithdrawal(
     @Request() req: any,
@@ -54,6 +58,7 @@ export class CausesController {
     return this.causesService.adminApproveWithdrawal(req.user?.id, wid, notes);
   }
 
+  @UseGuards(AdminGuard)
   @Patch('admin/withdrawals/:wid/reject')
   adminRejectWithdrawal(
     @Request() req: any,
@@ -106,11 +111,13 @@ export class CausesController {
     return this.causesService.getWithdrawals(req.user?.id, id);
   }
 
+  @UseGuards(AdminGuard)
   @Patch(':id/admin/approve')
   adminApprove(@Request() req: any, @Param('id') id: string) {
     return this.causesService.adminApprove(req.user?.id, id);
   }
 
+  @UseGuards(AdminGuard)
   @Patch(':id/admin/reject')
   adminReject(@Request() req: any, @Param('id') id: string, @Body('reason') reason: string) {
     return this.causesService.adminReject(req.user?.id, id, reason);

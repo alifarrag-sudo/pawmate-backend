@@ -43,6 +43,12 @@ export function generateOTP(length = 6): string {
 }
 
 export function validateHmac(payload: string, secret: string, signature: string): boolean {
+  if (!signature) return false;
   const expected = crypto.createHmac('sha512', secret).update(payload).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  // Both buffers must use identical encoding — hex string to Buffer via 'hex'
+  // timingSafeEqual throws on length mismatch, so check first
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const signatureBuf = Buffer.from(signature, 'hex');
+  if (expectedBuf.length !== signatureBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, signatureBuf);
 }

@@ -281,47 +281,56 @@ export class PaymentsService {
   // PAYMOB WEBHOOK HANDLER
   // ============================================================
 
-  async handlePaymobWebhook(body: any, signature: string): Promise<void> {
-    const isValid = this.paymob.validateWebhook(body, signature);
-    if (!isValid) {
-      this.logger.warn('Invalid Paymob webhook signature');
-      throw new BadRequestException('Invalid webhook signature');
-    }
+  async handlePaymobWebhook(body: any, signature: string): Promise<{ received: boolean }> {
+    try {
+      const isValid = this.paymob.validateWebhook(body, signature);
+      if (!isValid) {
+        // Return 200 + log — Paymob retries forever on non-2xx
+        this.logger.warn('Invalid Paymob webhook signature — ignoring payload');
+        return { received: true };
+      }
 
-    const { obj } = body;
-    const transactionId = obj?.id?.toString();
-    const success = obj?.success;
-    const orderId = obj?.order?.merchant_order_id;
+      const { obj } = body;
+      const transactionId = obj?.id?.toString();
+      const success = obj?.success;
+      const orderId = obj?.order?.merchant_order_id;
 
-    this.logger.log(`Paymob webhook: transaction ${transactionId}, orderId ${orderId}, success=${success}`);
+      this.logger.log(`Paymob webhook: transaction ${transactionId}, orderId ${orderId}, success=${success}`);
 
-    // FIX 5: Deduplicate webhook events atomically via unique constraint
-    if (transactionId) {
-      try {
-        await this.prisma.processedWebhookEvent.create({
-          data: { eventId: transactionId, provider: 'paymob' },
-        });
-      } catch (e: any) {
-        if (e.code === 'P2002') {
-          this.logger.log(`Webhook event ${transactionId} already processed — skipping.`);
-          return;
+      // Deduplicate webhook events atomically via unique constraint
+      if (transactionId) {
+        try {
+          await this.prisma.processedWebhookEvent.create({
+            data: { eventId: transactionId, provider: 'paymob' },
+          });
+        } catch (e: any) {
+          if (e.code === 'P2002') {
+            this.logger.log(`Webhook event ${transactionId} already processed — skipping.`);
+            return { received: true };
+          }
+          throw e;
         }
-        throw e;
       }
-    }
 
-    if (orderId && success) {
-      const booking = await this.prisma.booking.findUnique({ where: { id: orderId } });
-      if (booking && booking.paymentStatus === 'pending') {
-        await this.prisma.booking.update({
-          where: { id: orderId },
-          data: {
-            paymentStatus: 'authorized',
-            paymentReference: transactionId,
-            paymentAuthorizedAt: new Date(),
-          },
-        });
+      if (orderId && success) {
+        const booking = await this.prisma.booking.findUnique({ where: { id: orderId } });
+        if (booking && booking.paymentStatus === 'pending') {
+          await this.prisma.booking.update({
+            where: { id: orderId },
+            data: {
+              paymentStatus: 'authorized',
+              paymentReference: transactionId,
+              paymentAuthorizedAt: new Date(),
+            },
+          });
+        }
       }
+
+      return { received: true };
+    } catch (error: any) {
+      // Always return 200 — Paymob retries forever on non-2xx
+      this.logger.error(`Paymob webhook processing error: ${error.message}`, error.stack);
+      return { received: true };
     }
   }
 
