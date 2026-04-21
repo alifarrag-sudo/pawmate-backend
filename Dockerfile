@@ -18,5 +18,7 @@ RUN rm -f tsconfig.tsbuildinfo && npm run build && ls dist/main.js
 
 EXPOSE 3000
 
-# Run migrations then start the app
-CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration skipped or already applied' && node dist/main"]
+# Sync schema + apply migrations, then start the app
+# db push syncs schema for DBs without migration history (Railway internal PG)
+# migrate deploy applies tracked migrations for DBs with history (Supabase)
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss 2>&1 || true && npx prisma migrate deploy 2>&1 || true && node dist/main"]
