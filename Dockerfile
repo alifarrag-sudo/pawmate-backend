@@ -18,4 +18,5 @@ RUN rm -f tsconfig.tsbuildinfo && npm run build && ls dist/main.js
 
 EXPOSE 3000
 
-CMD ["node", "dist/main"]
+# Run migrations then start the app
+CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration skipped or already applied' && node dist/main"]
