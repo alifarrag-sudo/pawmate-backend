@@ -4,6 +4,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import * as admin from 'firebase-admin';
 import axios from 'axios';
 import { PrismaService } from '../../prisma/prisma.service';
+import { isCommunityEnabled } from '../../common/feature-flags';
 
 @Injectable()
 export class NotificationsService {
@@ -138,6 +139,7 @@ export class NotificationsService {
 
   @OnEvent('adoption.message')
   async onAdoptionMessage({ receiverId, senderName, petName, postId }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(receiverId, {
       title: '💬 New Adoption Message',
       body: `${senderName} sent you a message about ${petName}.`,
@@ -149,6 +151,7 @@ export class NotificationsService {
 
   @OnEvent('cause.donated')
   async onCauseDonated({ creatorId, donorName, amount, causeTitle, causeId }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: '💛 New Donation!',
       body: `${donorName} donated ${amount} EGP to "${causeTitle}".`,
@@ -160,6 +163,7 @@ export class NotificationsService {
 
   @OnEvent('cause.updated')
   async onCauseUpdated({ causeId, causeTitle, updateText, donorIds }: any) {
+    if (!isCommunityEnabled()) return;
     for (const donorId of donorIds) {
       await this.sendPushToUser(donorId, {
         title: '📢 Cause Update',
@@ -173,6 +177,7 @@ export class NotificationsService {
 
   @OnEvent('cause.goal_reached')
   async onCauseGoalReached({ cause, creatorId }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: '🎉 Goal Reached!',
       body: `Your cause "${cause.title}" has reached its funding goal!`,
@@ -184,6 +189,7 @@ export class NotificationsService {
 
   @OnEvent('cause.approved')
   async onCauseApproved({ causeId, creatorId, title }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: '✅ Cause Approved!',
       body: `Your cause "${title}" is now live and accepting donations.`,
@@ -195,6 +201,7 @@ export class NotificationsService {
 
   @OnEvent('cause.rejected')
   async onCauseRejected({ causeId, creatorId, title, reason }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: 'Cause Not Approved',
       body: `Your cause "${title}" was not approved. Reason: ${reason || 'See app for details.'}`,
@@ -206,6 +213,7 @@ export class NotificationsService {
 
   @OnEvent('withdrawal.requested')
   async onWithdrawalRequested({ causeId, causeTitle, amount, requestId }: any) {
+    if (!isCommunityEnabled()) return;
     // Notify all admins
     const admins = await this.prisma.user.findMany({
       where: { role: 'admin', isActive: true },
@@ -222,6 +230,7 @@ export class NotificationsService {
 
   @OnEvent('withdrawal.approved')
   async onWithdrawalApproved({ creatorId, amount, causeTitle }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: '✅ Withdrawal Approved',
       body: `Your withdrawal of ${amount} EGP from "${causeTitle}" has been approved. Transfer within 48 hours.`,
@@ -233,6 +242,7 @@ export class NotificationsService {
 
   @OnEvent('withdrawal.rejected')
   async onWithdrawalRejected({ creatorId, amount, causeTitle, reason }: any) {
+    if (!isCommunityEnabled()) return;
     await this.sendPushToUser(creatorId, {
       title: 'Withdrawal Not Approved',
       body: `Your withdrawal of ${amount} EGP from "${causeTitle}" was rejected.`,

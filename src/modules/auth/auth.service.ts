@@ -101,7 +101,7 @@ export class AuthService {
         roles,
         isParent: roles.includes('PARENT'),
         isPetFriend: roles.includes('PETFRIEND'),
-        activeRole: roles[0]?.toLowerCase() ?? 'parent',
+        activeRole: (roles[0]?.toLowerCase() ?? 'parent') as any,
         language: dto.language || 'en',
         emailVerified: false,
       },

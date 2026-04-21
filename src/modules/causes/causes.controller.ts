@@ -4,11 +4,12 @@ import {
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { CausesService } from './causes.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
+import { CommunityGuard } from '../../common/guards/community.guard';
 import { Public } from '../../common/decorators/public.decorator';
 
 @ApiTags('causes')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(CommunityGuard, JwtAuthGuard)
 @Controller('causes')
 export class CausesController {
   constructor(private causesService: CausesService) {}
