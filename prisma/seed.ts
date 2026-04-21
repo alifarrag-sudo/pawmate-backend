@@ -49,9 +49,11 @@ async function main() {
     where: { phone: '+201099999999' },
     update: {
       walletBalance: 500.00,
+      email: 'ali@pawmate.eg',
     },
     create: {
       phone: '+201099999999',
+      email: 'ali@pawmate.eg',
       passwordHash: aliHash,
       firstName: 'Ali',
       lastName: 'Farrag',
@@ -70,9 +72,11 @@ async function main() {
     where: { phone: '+201012345678' },
     update: {
       walletBalance: 750.00,
+      email: 'fatima@pawmate.eg',
     },
     create: {
       phone: '+201012345678',
+      email: 'fatima@pawmate.eg',
       passwordHash: fatimaHash,
       firstName: 'Fatima',
       lastName: 'Ahmed',
@@ -92,9 +96,11 @@ async function main() {
     update: {
       walletBalance: 1200.00,
       idVerified: true,
+      email: 'sara@pawmate.eg',
     },
     create: {
       phone: '+201076543210',
+      email: 'sara@pawmate.eg',
       passwordHash: saraHash,
       firstName: 'Sara',
       lastName: 'Mohamed',
@@ -115,9 +121,11 @@ async function main() {
     update: {
       walletBalance: 800.00,
       idVerified: true,
+      email: 'omar@pawmate.eg',
     },
     create: {
       phone: '+201112233440',
+      email: 'omar@pawmate.eg',
       passwordHash: omarHash,
       firstName: 'Omar',
       lastName: 'Khalil',
@@ -138,9 +146,11 @@ async function main() {
     update: {
       walletBalance: 950.00,
       idVerified: true,
+      email: 'nour@pawmate.eg',
     },
     create: {
       phone: '+201223344550',
+      email: 'nour@pawmate.eg',
       passwordHash: nourHash,
       firstName: 'Nour',
       lastName: 'Hassan',
