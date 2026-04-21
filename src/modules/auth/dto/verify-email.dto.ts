@@ -1,9 +1,8 @@
-import { IsString, Length } from 'class-validator';
+import { IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class VerifyEmailDto {
-  @ApiProperty({ example: '482913', description: '6-digit email verification code' })
+  @ApiProperty({ description: 'Email verification token from the verification link' })
   @IsString()
-  @Length(6, 6, { message: 'Code must be exactly 6 digits' })
-  code: string;
+  token: string;
 }

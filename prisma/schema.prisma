@@ -18,6 +18,8 @@ datasource db {
 enum UserRole {
   user
   admin
+  owner
+  owner_restricted
 }
 
 enum ActiveRole {
@@ -489,8 +491,9 @@ model User {
   idReviewees     User[]    @relation("IdReviewer")
 
   // Email + phone verification
-  emailVerified Boolean   @default(false)  // set true after email code verified or via Google/Facebook
-  phoneVerified Boolean   @default(false)  // set true after SMS OTP verified
+  emailVerified   Boolean   @default(false)  // set true after email code verified or via Google/Facebook
+  emailVerifiedAt DateTime?                  // timestamp of first verification
+  phoneVerified   Boolean   @default(false)  // set true after SMS OTP verified
 
   // Status
   isActive      Boolean   @default(true)
@@ -566,6 +569,8 @@ model User {
   @@index([phone])
   @@index([email])
   @@index([idVerified, isActive, isBanned])
+  @@index([authProvider, authProviderId])
+  @@index([emailVerified])
   @@map("users")
 }
 

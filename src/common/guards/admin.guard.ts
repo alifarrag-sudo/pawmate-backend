@@ -4,10 +4,11 @@ import {
   ExecutionContext,
   ForbiddenException,
 } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../services/redis.service';
 
-const ADMIN_ROLES = ['admin', 'owner', 'owner_restricted'];
+const ADMIN_ROLES: string[] = [UserRole.admin, UserRole.owner, UserRole.owner_restricted];
 const CACHE_TTL_SECONDS = 60;
 
 @Injectable()

@@ -4,14 +4,17 @@ import {
   ConflictException,
   BadRequestException,
   NotFoundException,
+  NotImplementedException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { MailService } from '../mail/mail.service';
 import { generateOTP, generateSecureToken, hashValue } from '../../common/utils/crypto.util';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -19,10 +22,18 @@ import { SocialLoginDto } from './dto/social-login.dto';
 
 const SALT_ROUNDS = 12;
 const EMAIL_CODE_TTL = 600;       // 10 minutes
-const RESET_CODE_TTL = 600;       // 10 minutes
+const RESET_TOKEN_TTL = 3600;     // 1 hour
+const VERIFY_TOKEN_TTL = 3600;    // 1 hour
 const OTP_MAX_ATTEMPTS = 3;
 const OTP_RATE_LIMIT_SECONDS = 3600;
 const OTP_RATE_LIMIT_MAX = 5;
+
+const VALID_APP_ROLES = [
+  'PARENT', 'PETFRIEND', 'TRAINER', 'KENNEL',
+  'PETHOTEL', 'SHOP_OWNER', 'VET', 'GROOMER',
+];
+
+const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d).{8,}$/;
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -34,7 +45,7 @@ function rolesFromLegacy(role?: string): string[] {
   if (r === 'trainer') return ['TRAINER'];
   if (r === 'kennel') return ['KENNEL'];
   if (r === 'pethotel') return ['PETHOTEL'];
-  if (r === 'shop') return ['SHOP'];
+  if (r === 'shop') return ['SHOP_OWNER'];
   return ['PARENT'];
 }
 
@@ -59,6 +70,7 @@ function formatUser(user: any) {
     role: user.role,
     loyaltyTier: user.loyaltyTier,
     loyaltyPoints: user.loyaltyPoints,
+    createdAt: user.createdAt,
   };
 }
 
@@ -72,6 +84,8 @@ export class AuthService {
     private configService: ConfigService,
     private redis: RedisService,
     private notifications: NotificationsService,
+    private mailService: MailService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // ─── Register ─────────────────────────────────────────────────────────────
@@ -79,7 +93,6 @@ export class AuthService {
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
 
-    // Check duplicate email
     const existing = await this.prisma.user.findUnique({ where: { email } });
     if (existing) {
       throw new ConflictException({
@@ -107,16 +120,18 @@ export class AuthService {
       },
     });
 
-    // Send email verification code in background (non-blocking)
-    this.sendEmailVerificationCode(user.id, email).catch((err) =>
+    // Send email verification
+    this.sendEmailVerificationToken(user).catch((err) =>
       this.logger.warn(`Failed to send verification email to ${email}: ${err.message}`),
     );
 
+    // Send welcome email
+    this.mailService.sendWelcome(user).catch(() => {});
+
+    this.eventEmitter.emit('user.signed_up', { user, provider: 'email' });
+
     const tokens = await this.generateTokenPair(user);
-    return {
-      ...tokens,
-      user: formatUser(user),
-    };
+    return { ...tokens, user: formatUser(user) };
   }
 
   // ─── Login ────────────────────────────────────────────────────────────────
@@ -143,7 +158,6 @@ export class AuthService {
     }
 
     if (!user.passwordHash) {
-      // Social-login user trying to sign in with password
       throw new UnauthorizedException({
         error: 'SOCIAL_ACCOUNT',
         message: `This account was created with ${user.authProvider}. Please sign in with ${user.authProvider}.`,
@@ -164,11 +178,10 @@ export class AuthService {
       data: { lastLoginAt: new Date() },
     });
 
+    this.eventEmitter.emit('user.logged_in', { userId: user.id, method: 'email' });
+
     const tokens = await this.generateTokenPair(user, ipAddress, userAgent);
-    return {
-      ...tokens,
-      user: formatUser(user),
-    };
+    return { ...tokens, user: formatUser(user) };
   }
 
   // ─── Social Login (Google + Facebook) ────────────────────────────────────
@@ -179,8 +192,15 @@ export class AuthService {
     let providerId: string | undefined;
     let emailIsVerified = false;
 
-    // Verify token with provider
     if (dto.provider === 'google') {
+      const googleClientId = this.configService.get('GOOGLE_CLIENT_ID_WEB');
+      if (!googleClientId) {
+        throw new NotImplementedException({
+          error: 'NOT_CONFIGURED',
+          message: 'Google social auth not yet configured.',
+        });
+      }
+
       try {
         const res = await fetch(
           `https://www.googleapis.com/oauth2/v3/tokeninfo?id_token=${dto.token}`,
@@ -192,7 +212,6 @@ export class AuthService {
           providerId = info.sub;
           emailIsVerified = info.email_verified === 'true' || info.email_verified === true;
         } else {
-          // Fallback: try userinfo endpoint with access token
           const res2 = await fetch('https://www.googleapis.com/userinfo/v2/me', {
             headers: { Authorization: `Bearer ${dto.token}` },
           });
@@ -201,23 +220,30 @@ export class AuthService {
             providerEmail = info.email || providerEmail;
             providerName = info.name || providerName;
             providerId = info.id;
-            emailIsVerified = true; // Google-authenticated emails are always verified
+            emailIsVerified = true;
           }
         }
       } catch (err) {
         this.logger.warn(`Google token verify error: ${err}`);
       }
     } else if (dto.provider === 'facebook') {
+      const fbAppId = this.configService.get('FACEBOOK_APP_ID');
+      if (!fbAppId) {
+        throw new NotImplementedException({
+          error: 'NOT_CONFIGURED',
+          message: 'Facebook social auth not yet configured.',
+        });
+      }
+
       try {
         const res = await fetch(
-          `https://graph.facebook.com/me?fields=id,name,email&access_token=${dto.token}`,
+          `https://graph.facebook.com/me?fields=id,name,email,picture&access_token=${dto.token}`,
         );
         if (res.ok) {
           const info: any = await res.json();
           providerEmail = info.email || providerEmail;
           providerName = info.name || providerName;
           providerId = info.id;
-          // Facebook emails are not automatically verified
           emailIsVerified = !!info.email;
         }
       } catch (err) {
@@ -234,21 +260,32 @@ export class AuthService {
 
     const email = providerEmail.toLowerCase();
 
-    // Find existing user
-    let user = await this.prisma.user.findUnique({ where: { email } });
+    // Find by provider ID first, then by email
+    let user = providerId
+      ? await this.prisma.user.findFirst({
+          where: { authProviderId: providerId, authProvider: dto.provider },
+        })
+      : null;
+
+    if (!user) {
+      user = await this.prisma.user.findUnique({ where: { email } });
+    }
+
+    let isNewUser = false;
 
     if (user) {
-      // User exists — update provider info and log in
       await this.prisma.user.update({
         where: { id: user.id },
         data: {
           authProviderId: providerId ?? user.authProviderId,
           emailVerified: emailIsVerified || user.emailVerified,
+          emailVerifiedAt: emailIsVerified && !user.emailVerified ? new Date() : undefined,
           lastLoginAt: new Date(),
         } as any,
       });
+
+      this.eventEmitter.emit('user.logged_in', { userId: user.id, method: dto.provider });
     } else {
-      // New user — auto-register
       const nameParts = (providerName || email.split('@')[0]).split(' ');
       const firstName = nameParts[0] || 'User';
       const lastName = nameParts.slice(1).join(' ') || '';
@@ -266,17 +303,17 @@ export class AuthService {
           isPetFriend: false,
           activeRole: 'parent',
           emailVerified: emailIsVerified,
+          emailVerifiedAt: emailIsVerified ? new Date() : undefined,
           language: 'en',
         } as any,
       });
+
+      isNewUser = true;
+      this.eventEmitter.emit('user.signed_up', { user, provider: dto.provider });
     }
 
     const tokens = await this.generateTokenPair(user);
-    return {
-      ...tokens,
-      user: formatUser(user),
-      isNewUser: !user.createdAt || (new Date().getTime() - new Date(user.createdAt).getTime() < 5000),
-    };
+    return { ...tokens, user: formatUser(user), isNewUser };
   }
 
   // ─── Forgot Password ───────────────────────────────────────────────────────
@@ -299,38 +336,57 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
 
     if (user && user.authProvider === 'email') {
-      const code = generateOTP(6);
-      const codeHash = hashValue(code);
-      await this.redis.setex(`reset:${normalizedEmail}`, RESET_CODE_TTL, codeHash);
+      const token = generateSecureToken(32);
+      await this.redis.setex(`forgot:${token}`, RESET_TOKEN_TTL, user.id);
 
-      const devMode = process.env.NODE_ENV !== 'production';
-      if (devMode) {
-        this.logger.debug(`[DEV] Password reset code for ${normalizedEmail}: ${code}`);
-      }
+      this.eventEmitter.emit('user.password_reset_requested', { userId: user.id });
 
-      // Send email (non-blocking) — sendEmail may not be implemented yet
-      (this.notifications as any).sendEmail?.(normalizedEmail, 'PawMate Password Reset', `Your reset code is: ${code}. Valid for 10 minutes.`)
-        ?.catch?.(() => {});
-    }
+      // Send email
+      this.mailService.sendPasswordReset(user, token).catch(() => {});
 
-    const response: any = { message: 'If that email is registered, a reset code has been sent.' };
-    if (process.env.NODE_ENV !== 'production' && user) {
-      const stored = await this.redis.get(`reset:${normalizedEmail}`);
-      if (stored) {
-        // Retrieve and return the plain code for dev (we stored the hash, so re-generate)
-        // In dev, re-issue a fresh code that we CAN return
-        const devCode = generateOTP(6);
-        await this.redis.setex(`reset:${normalizedEmail}`, RESET_CODE_TTL, hashValue(devCode));
-        response.devCode = devCode;
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.debug(`[DEV] Password reset token for ${normalizedEmail}: ${token}`);
+        return { message: 'If that email is registered, a reset link has been sent.', devToken: token };
       }
     }
 
-    return response;
+    return { message: 'If that email is registered, a reset link has been sent.' };
   }
 
   // ─── Reset Password ────────────────────────────────────────────────────────
 
-  async resetPassword(email: string, code: string, newPassword: string) {
+  async resetPassword(token: string, newPassword: string) {
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      throw new BadRequestException({
+        error: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters with at least 1 uppercase letter and 1 number.',
+      });
+    }
+
+    const userId = await this.redis.get(`forgot:${token}`);
+    if (!userId) {
+      throw new BadRequestException({
+        error: 'TOKEN_INVALID',
+        message: 'Invalid or expired reset token.',
+      });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newHash },
+    });
+
+    await this.redis.del(`forgot:${token}`);
+    await this.revokeAllUserTokens(userId);
+
+    this.eventEmitter.emit('user.password_reset_completed', { userId });
+
+    return { message: 'Password reset successfully. Please sign in with your new password.' };
+  }
+
+  // Legacy: code-based reset (kept for backward compat with mobile app)
+  async resetPasswordWithCode(email: string, code: string, newPassword: string) {
     const normalizedEmail = email.trim().toLowerCase();
 
     const storedHash = await this.redis.get(`reset:${normalizedEmail}`);
@@ -348,6 +404,13 @@ export class AuthService {
       });
     }
 
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      throw new BadRequestException({
+        error: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters with at least 1 uppercase letter and 1 number.',
+      });
+    }
+
     const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -360,11 +423,49 @@ export class AuthService {
     await this.redis.del(`reset:${normalizedEmail}`);
     await this.revokeAllUserTokens(user.id);
 
+    this.eventEmitter.emit('user.password_reset_completed', { userId: user.id });
+
     return { message: 'Password reset successfully. Please sign in with your new password.' };
   }
 
   // ─── Email Verification ────────────────────────────────────────────────────
 
+  async sendEmailVerificationToken(user: { id: string; email: string; firstName: string }) {
+    const token = generateSecureToken(32);
+    await this.redis.setex(`verify:${token}`, VERIFY_TOKEN_TTL, user.id);
+
+    this.mailService.sendEmailVerification(user, token).catch(() => {});
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.logger.debug(`[DEV] Email verify token for ${user.email}: ${token}`);
+      return { message: 'Verification link sent to your email.', devToken: token };
+    }
+
+    return { message: 'Verification link sent to your email.' };
+  }
+
+  async verifyEmailByToken(token: string) {
+    const userId = await this.redis.get(`verify:${token}`);
+    if (!userId) {
+      throw new BadRequestException({
+        error: 'TOKEN_INVALID',
+        message: 'Invalid or expired verification token.',
+      });
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { emailVerified: true, emailVerifiedAt: new Date() } as any,
+    });
+
+    await this.redis.del(`verify:${token}`);
+
+    this.eventEmitter.emit('user.email_verified', { userId });
+
+    return { message: 'Email verified successfully.' };
+  }
+
+  // Legacy: code-based email verification (kept for mobile app)
   async sendEmailVerificationCode(userId: string, email: string) {
     const rateLimitKey = `emailverify:ratelimit:${email}`;
     const count = await this.redis.incr(rateLimitKey);
@@ -423,8 +524,10 @@ export class AuthService {
 
     await this.prisma.user.update({
       where: { id: userId },
-      data: { emailVerified: true },
+      data: { emailVerified: true, emailVerifiedAt: new Date() } as any,
     });
+
+    this.eventEmitter.emit('user.email_verified', { userId });
 
     return { message: 'Email verified successfully.' };
   }
@@ -440,7 +543,7 @@ export class AuthService {
     }
 
     const code = generateOTP(6);
-    await this.redis.setex(`sms:${userId}`, 300, hashValue(code)); // 5 min
+    await this.redis.setex(`sms:${userId}`, 300, hashValue(code));
 
     if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(`[DEV] SMS code for ${phone}: ${code}`);
@@ -504,6 +607,13 @@ export class AuthService {
   // ─── Add Role ──────────────────────────────────────────────────────────────
 
   async addRole(userId: string, roleToAdd: string) {
+    if (!VALID_APP_ROLES.includes(roleToAdd)) {
+      throw new BadRequestException({
+        error: 'INVALID_ROLE',
+        message: `Invalid role. Valid roles: ${VALID_APP_ROLES.join(', ')}`,
+      });
+    }
+
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
@@ -520,7 +630,23 @@ export class AuthService {
     }
 
     await this.prisma.user.update({ where: { id: userId }, data: updateData });
+
+    this.eventEmitter.emit('user.role_added', { userId, role: roleToAdd, roles: updatedRoles });
+
     return { message: `Role ${roleToAdd} added.`, roles: updatedRoles };
+  }
+
+  // ─── Get My Roles ──────────────────────────────────────────────────────────
+
+  async getMyRoles(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { roles: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const roles: string[] = (user as any).roles ?? ['PARENT'];
+    return { roles, primaryRole: roles[0] || 'PARENT' };
   }
 
   // ─── Token operations ─────────────────────────────────────────────────────
@@ -583,6 +709,13 @@ export class AuthService {
       throw new BadRequestException({ error: 'WRONG_PASSWORD', message: 'Current password is incorrect.' });
     }
 
+    if (!PASSWORD_REGEX.test(newPassword)) {
+      throw new BadRequestException({
+        error: 'WEAK_PASSWORD',
+        message: 'Password must be at least 8 characters with at least 1 uppercase letter and 1 number.',
+      });
+    }
+
     const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash: newHash } });
     await this.revokeAllUserTokens(userId);
@@ -617,7 +750,6 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
-    // Enforce max 5 active refresh tokens per user
     const activeTokens = await this.prisma.refreshToken.count({
       where: { userId: user.id, isRevoked: false },
     });

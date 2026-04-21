@@ -29,6 +29,7 @@
     "@nestjs/platform-socket.io": "^10.3.0",
     "@nestjs/schedule": "^4.0.1",
     "@nestjs/swagger": "^7.2.0",
+    "@nestjs/throttler": "^5.1.2",
     "@nestjs/websockets": "^10.3.0",
     "@prisma/client": "^5.8.0",
     "@sendgrid/mail": "^8.1.0",
@@ -46,9 +47,9 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
-    "@nestjs/throttler": "^5.1.2",
     "rate-limiter-flexible": "^4.0.1",
     "reflect-metadata": "^0.1.14",
+    "resend": "^6.12.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.33.2",
     "socket.io": "^4.7.4",
@@ -78,11 +79,19 @@
     "typescript": "^5.3.3"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": "ts-jest" },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "transform": {
+      "^.+\\.(t|j)s$": "ts-jest"
+    },
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

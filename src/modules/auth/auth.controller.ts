@@ -58,7 +58,7 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Request a 6-digit password reset code via email' })
+  @ApiOperation({ summary: 'Request password reset link via email' })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
@@ -66,9 +66,19 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify reset code and set new password' })
+  @ApiOperation({ summary: 'Reset password using token from email link' })
   async resetPassword(@Body() dto: ResetPasswordDto) {
-    return this.authService.resetPassword(dto.email, dto.code, dto.newPassword);
+    return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
+  // ─── Public: Email Verification (token-based, from email link) ────────────
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify email using token from verification link' })
+  async verifyEmailByToken(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmailByToken(dto.token);
   }
 
   // ─── Public: Token management ──────────────────────────────────────────────
@@ -112,13 +122,15 @@ export class AuthController {
     return this.authService.changePassword(userId, dto.currentPassword, dto.newPassword);
   }
 
+  // ─── Authenticated: Code-based email verification (mobile app) ────────────
+
   @UseGuards(JwtAuthGuard)
-  @Post('verify-email')
+  @Post('verify-email-code')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Verify email with 6-digit code' })
-  async verifyEmail(@CurrentUser('id') userId: string, @Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(userId, dto.code);
+  @ApiOperation({ summary: 'Verify email with 6-digit code (mobile app)' })
+  async verifyEmailCode(@CurrentUser('id') userId: string, @Body() body: { code: string }) {
+    return this.authService.verifyEmail(userId, body.code);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -129,6 +141,8 @@ export class AuthController {
   async sendEmailVerification(@CurrentUser('id') userId: string, @CurrentUser('email') email: string) {
     return this.authService.sendEmailVerificationCode(userId, email);
   }
+
+  // ─── Authenticated: Phone verification ─────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
   @Post('verify-phone')
@@ -154,6 +168,8 @@ export class AuthController {
     return this.authService.sendPhoneVerificationCode(userId, body.phone);
   }
 
+  // ─── Authenticated: Role management ────────────────────────────────────────
+
   @UseGuards(JwtAuthGuard)
   @Post('add-role')
   @HttpCode(HttpStatus.OK)
@@ -161,6 +177,14 @@ export class AuthController {
   @ApiOperation({ summary: 'Add a new role to the current user account' })
   async addRole(@CurrentUser('id') userId: string, @Body() body: { role: string }) {
     return this.authService.addRole(userId, body.role);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('my-roles')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get current user roles' })
+  async getMyRoles(@CurrentUser('id') userId: string) {
+    return this.authService.getMyRoles(userId);
   }
 
   // ─── Legacy: Google-only route (backward compat) ──────────────────────────
