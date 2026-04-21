@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
 
@@ -7,6 +8,7 @@ export class AdminService {
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   async getDashboardStats() {
@@ -30,6 +32,7 @@ export class AdminService {
     // FIX 4: Immediately invalidate the JWT guard cache so the ban takes effect on next request
     await this.redis.del(`user:active:${userId}`);
 
+    this.eventEmitter.emit('account.suspended', { userId, reason });
     return { message: 'User banned successfully.' };
   }
 
@@ -44,6 +47,7 @@ export class AdminService {
 
     await this.redis.del(`user:active:${userId}`);
 
+    this.eventEmitter.emit('account.unsuspended', { userId });
     return { message: 'User unbanned successfully.' };
   }
 

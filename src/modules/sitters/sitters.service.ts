@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { buildPricingInfo, getPriceRange, computeSitterTier } from '../../common/utils/pricing.util';
 
@@ -6,7 +7,10 @@ const DAY_MAP: Record<number, string> = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed'
 
 @Injectable()
 export class SittersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   async findById(id: string) {
     const profile = await this.prisma.petFriendProfile.findUnique({
@@ -121,6 +125,8 @@ export class SittersService {
       data: { ...this.mapProfileInput(data), userId },
     });
     await this.prisma.user.update({ where: { id: userId }, data: { isPetFriend: true } });
+    this.eventEmitter.emit('provider.applied', { userId, providerType: 'petfriend', profileId: profile.id });
+    this.eventEmitter.emit('provider.approved', { userId, providerType: 'petfriend', profileId: profile.id });
     return profile;
   }
 

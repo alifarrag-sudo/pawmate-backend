@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const PLATFORM_FEE_RATE = 0.15;
 
 @Injectable()
 export class ProvidersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   // ─── PROVIDER PROFILES ──────────────────────────────────────────────────
 
@@ -28,9 +32,12 @@ export class ProvidersService {
     const existing = await this.prisma.providerProfile.findUnique({ where: { userId } });
     if (existing) throw new ConflictException('You already have a provider profile.');
 
-    return this.prisma.providerProfile.create({
+    const profile = await this.prisma.providerProfile.create({
       data: { ...this.normalizeProviderInput(data), userId },
     });
+    this.eventEmitter.emit('provider.applied', { userId, providerType: profile.providerType, profileId: profile.id });
+    this.eventEmitter.emit('provider.approved', { userId, providerType: profile.providerType, profileId: profile.id });
+    return profile;
   }
 
   async getMyProfile(userId: string) {

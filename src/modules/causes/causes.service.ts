@@ -362,6 +362,12 @@ export class CausesService {
       amount: w.amount,
       causeTitle: (w.cause as any).title,
     });
+    this.eventEmitter.emit('withdrawal.completed', {
+      withdrawalId,
+      creatorId: (w.cause as any).creatorId,
+      amount: w.amount,
+      causeTitle: (w.cause as any).title,
+    });
     return updated;
   }
 

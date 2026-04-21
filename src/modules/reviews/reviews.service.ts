@@ -1,9 +1,13 @@
 import { Injectable, BadRequestException, ConflictException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class ReviewsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private eventEmitter: EventEmitter2,
+  ) {}
 
   async getReviewsForSitter(petFriendId: string) {
     return this.prisma.review.findMany({
@@ -65,6 +69,8 @@ export class ReviewsService {
       where: { id: data.bookingId },
       data: { parentReviewed: true },
     });
+
+    this.eventEmitter.emit('review.posted', { review, bookingId: data.bookingId, rating: data.rating, reviewerId });
 
     return review;
   }

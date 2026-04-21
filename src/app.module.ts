@@ -27,6 +27,7 @@ import { CausesModule } from './modules/causes/causes.module';
 import { FoodModule } from './modules/food/food.module';
 import { HealthModule } from './modules/health/health.module';
 import { MailModule } from './modules/mail/mail.module';
+import { EventBridgeModule } from './modules/events/event-bridge.module';
 
 @Module({
   imports: [
@@ -38,7 +39,7 @@ import { MailModule } from './modules/mail/mail.module';
 
     // Event emitter for domain events (booking.accepted, etc.)
     EventEmitterModule.forRoot({
-      wildcard: false,
+      wildcard: true,
       delimiter: '.',
       maxListeners: 20,
     }),
@@ -80,6 +81,7 @@ import { MailModule } from './modules/mail/mail.module';
     FoodModule,
     HealthModule,
     MailModule,
+    EventBridgeModule,
   ],
 })
 export class AppModule {}

@@ -5,7 +5,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymobService } from './paymob.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -20,6 +20,7 @@ export class PaymentsService {
     private prisma: PrismaService,
     private paymob: PaymobService,
     private notifications: NotificationsService,
+    private eventEmitter: EventEmitter2,
   ) {}
 
   // ============================================================
@@ -64,6 +65,7 @@ export class PaymentsService {
             where: { id: bookingId },
             data: { paymentStatus: 'failed' },
           });
+          this.eventEmitter.emit('payment.failed', { bookingId, error: 'Insufficient wallet balance', stage: 'authorization' });
           this.logger.warn(`Insufficient wallet balance for booking ${bookingId}`);
           return;
         }
@@ -163,8 +165,10 @@ export class PaymentsService {
         },
       });
 
+      this.eventEmitter.emit('payment.succeeded', { bookingId, amount: Number(booking.totalPrice), method: booking.paymentMethod });
       this.logger.log(`Payment captured for booking ${bookingId}`);
     } catch (error: any) {
+      this.eventEmitter.emit('payment.failed', { bookingId, error: error.message, stage: 'capture' });
       this.logger.error(`Payment capture failed for booking ${bookingId}: ${error.message}`);
     }
   }
@@ -241,6 +245,7 @@ export class PaymentsService {
       await this.addPlatformCredit(booking.petFriendId, sitterCompensation, 'cancellation_compensation', bookingId);
     }
 
+    this.eventEmitter.emit('payment.refunded', { bookingId, ownerRefundAmount, ownerRefundPercent, sitterCompensationPercent });
     this.logger.log(`Refund processed for booking ${bookingId}: owner ${ownerRefundPercent}%, sitter ${sitterCompensationPercent}%`);
   }
 

@@ -293,6 +293,7 @@ export class BookingsService {
     });
 
     this.eventEmitter.emit('booking.started', { booking: updated });
+    this.eventEmitter.emit('booking.in_progress', { booking: updated });
 
     return updated;
   }
@@ -368,6 +369,7 @@ export class BookingsService {
     });
 
     this.eventEmitter.emit('booking.ended', { booking: updated });
+    this.eventEmitter.emit('booking.completed', { booking: updated });
 
     // Owner confirmation window: 2 hours, then auto-complete
     await this.scheduleAutoComplete(bookingId, 2 * 60 * 60);

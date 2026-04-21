@@ -2082,3 +2082,21 @@ model FoodReview {
   @@index([orderId])
   @@map("food_reviews")
 }
+
+// ── Event Bridge Delivery Tracking ──────────────────────────────────────────
+
+model EventBridgeDelivery {
+  id            String    @id @default(cuid())
+  eventId       String    @unique
+  eventName     String
+  attempts      Int       @default(0)
+  lastAttemptAt DateTime?
+  lastError     String?
+  delivered     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([delivered, createdAt])
+  @@index([eventName])
+  @@map("event_bridge_deliveries")
+}
