@@ -12,9 +12,8 @@ interface SitterCandidate {
   reliabilityScore: number;
   distanceKm: number;
   responseRate: number;
-  experienceYears: number;
-  isSuperSitter: boolean;
   isFeatured: boolean;
+  isVerified: boolean;
 }
 
 @Injectable()
@@ -92,55 +91,59 @@ export class MatchingService {
     start: Date,
     end: Date,
   ): Promise<SitterCandidate[]> {
-    // Raw query to use PostGIS for distance calculation
-    const candidates = await this.prisma.$queryRaw<any[]>`
-      SELECT
-        sp.id,
-        sp.user_id,
-        u.first_name || ' ' || LEFT(u.last_name, 1) || '.' as display_name,
-        sp.avg_rating,
-        sp.reliability_score,
-        sp.response_rate,
-        sp.experience_years,
-        sp.is_super_sitter,
-        sp.is_featured,
-        ST_Distance(
-          ST_MakePoint(sp.lng::float, sp.lat::float)::geography,
-          ST_MakePoint(${ownerLng}::float, ${ownerLat}::float)::geography
-        ) / 1000 AS distance_km
-      FROM sitter_profiles sp
-      JOIN users u ON u.id = sp.user_id
-      WHERE
-        sp.is_active = true
-        AND u.is_active = true
-        AND u.is_banned = false
-        AND u.id_verified = true
-        AND sp.is_on_holiday = false
-        AND ${serviceType} = ANY(sp.services)
-        AND ST_DWithin(
-          ST_MakePoint(sp.lng::float, sp.lat::float)::geography,
-          ST_MakePoint(${ownerLng}::float, ${ownerLat}::float)::geography,
-          sp.service_radius_km * 1000
-        )
-        AND sp.user_id NOT IN (
-          SELECT sitter_id FROM bookings
-          WHERE status IN ('accepted', 'active', 'pending')
-          AND requested_start < ${end}
-          AND requested_end > ${start}
-        )
-      ORDER BY distance_km ASC
-      LIMIT 50
-    `;
+    // Raw query — use Prisma camelCase column names (double-quoted in PG)
+    // PostGIS distance calculation for geo-matching
+    try {
+      const candidates = await this.prisma.$queryRaw<any[]>`
+        SELECT
+          sp.id,
+          sp."userId" AS "userId",
+          u."firstName" || ' ' || LEFT(u."lastName", 1) || '.' AS "displayName",
+          sp."avgRating" AS "avgRating",
+          sp."reliabilityScore" AS "reliabilityScore",
+          sp."responseRate" AS "responseRate",
+          sp."isFeatured" AS "isFeatured",
+          sp."isVerified" AS "isVerified",
+          ST_Distance(
+            ST_MakePoint(sp.lng::float, sp.lat::float)::geography,
+            ST_MakePoint(${ownerLng}::float, ${ownerLat}::float)::geography
+          ) / 1000 AS "distanceKm"
+        FROM petfriend_profiles sp
+        JOIN users u ON u.id = sp."userId"
+        WHERE
+          sp."isActive" = true
+          AND u."isActive" = true
+          AND u."isBanned" = false
+          AND sp."isOnHoliday" = false
+          AND ST_DWithin(
+            ST_MakePoint(sp.lng::float, sp.lat::float)::geography,
+            ST_MakePoint(${ownerLng}::float, ${ownerLat}::float)::geography,
+            sp."serviceRadiusKm" * 1000
+          )
+          AND sp."userId" NOT IN (
+            SELECT "petFriendId" FROM bookings
+            WHERE status IN ('accepted', 'active', 'pending')
+            AND "petFriendId" IS NOT NULL
+            AND "requestedStart" < ${end}
+            AND "requestedEnd" > ${start}
+          )
+        ORDER BY "distanceKm" ASC
+        LIMIT 50
+      `;
 
-    // Filter by pet type/size (array overlap check — Prisma raw returns as strings)
+    // Filter by pet type/size (array overlap check)
     return candidates.filter((c) => {
-      const sitterPetTypes = c.pet_types || [];
-      const sitterPetSizes = c.pet_sizes || [];
+      const sitterPetTypes = c.petTypesAccepted || [];
+      const sitterPetSizes = c.petSizesAccepted || [];
       return (
         petTypes.every((t) => sitterPetTypes.includes(t)) &&
         petSizes.every((s) => sitterPetSizes.includes(s))
       );
     });
+    } catch (error: any) {
+      this.logger.error(`findCandidatesForBooking failed: ${error.message}`);
+      return [];
+    }
   }
 
   scoreSitter(sitter: SitterCandidate): number {
@@ -148,18 +151,16 @@ export class MatchingService {
     const ratingScore = (sitter.avgRating || 0) / 5.0;
     const reliabilityScore = (sitter.reliabilityScore || 100) / 100;
     const responseScore = (sitter.responseRate || 100) / 100;
-    const experienceScore = Math.min(sitter.experienceYears || 0, 5) / 5;
 
-    const superSitterBonus = sitter.isSuperSitter ? 0.1 : 0;
+    const verifiedBonus = sitter.isVerified ? 0.1 : 0;
     const featuredBonus = sitter.isFeatured ? 0.05 : 0;
 
     const score =
       ratingScore * 0.30 +
       reliabilityScore * 0.25 +
-      distanceScore * 0.20 +
-      responseScore * 0.15 +
-      experienceScore * 0.10 +
-      superSitterBonus +
+      distanceScore * 0.25 +
+      responseScore * 0.20 +
+      verifiedBonus +
       featuredBonus;
 
     return Math.min(score, 1.5);
