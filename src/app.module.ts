@@ -28,6 +28,7 @@ import { FoodModule } from './modules/food/food.module';
 import { HealthModule } from './modules/health/health.module';
 import { MailModule } from './modules/mail/mail.module';
 import { EventBridgeModule } from './modules/events/event-bridge.module';
+import { PetFriendModule } from './modules/petfriend/petfriend.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { EventBridgeModule } from './modules/events/event-bridge.module';
     HealthModule,
     MailModule,
     EventBridgeModule,
+    PetFriendModule,
   ],
 })
 export class AppModule {}

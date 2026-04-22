@@ -445,6 +445,20 @@ enum HomeType {
   villa
 }
 
+enum PetFriendStatus {
+  PENDING_DOCS   // started application, missing documents
+  APPROVED       // all docs submitted + auto-approved, listing live
+  ADMIN_REVIEW   // flagged for admin review
+  SUSPENDED      // admin suspended
+  REJECTED       // admin rejected after review
+  DEACTIVATED    // PetFriend voluntarily paused listing
+}
+
+enum PayoutType {
+  SCHEDULED
+  INSTANT
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -531,7 +545,7 @@ model User {
   bookingsAsParent      Booking[]            @relation("BookingParent")   // was: BookingOwner
   bookingsAsPetFriend   Booking[]            @relation("BookingPetFriend") // was: BookingSitter
   paymentTransactions   PaymentTransaction[]
-  payouts               PetFriendPayout[]    // was: SitterPayout
+  payouts               PetFriendPayout[]    @relation("UserPayouts") // was: SitterPayout
   reviewsGiven          Review[]             @relation("Reviewer")
   reviewsReceived       Review[]             @relation("Reviewee")
   notifications         Notification[]
@@ -712,6 +726,47 @@ model PetFriendProfile {
   isFeatured      Boolean @default(false)
   instantBook     Boolean @default(false)
 
+  // KYC documents (Cloudinary URLs) — stored here for provider-specific docs
+  pccUrl          String?   // Police Clearance Certificate
+  selfieWithIdUrl String?   // Selfie holding ID
+
+  // Service offerings
+  servicesOffered      String[]  @default([])  // e.g. ["BOARDING","DAY_VISIT","WALKING","GROOMING","TRAINING"]
+  acceptsDogs          Boolean   @default(true)
+  acceptsCats          Boolean   @default(true)
+  acceptsOther         Boolean   @default(false)
+  maxPetsPerBooking    Int       @default(3)
+  maxDogSizeKg         Int?
+
+  // Simplified integer pricing (EGP) — complement to existing Decimal rates
+  ratePerHour   Int?
+  ratePerDay    Int?
+  ratePerNight  Int?
+  ratePerWalk   Int?
+
+  // Availability JSON (weekly schedule)
+  availabilityJson Json?
+
+  // Application status workflow
+  status             PetFriendStatus @default(PENDING_DOCS)
+  appliedAt          DateTime        @default(now())
+  autoApprovedAt     DateTime?
+  adminReviewedAt    DateTime?
+  adminReviewedBy    String?
+  rejectionReason    String?
+  suspendedUntil     DateTime?
+
+  // Commission & reputation
+  fiveStarCount   Int   @default(0)
+  commissionRate  Float @default(0.15)  // 0.15 for new, 0.10 for elite (4.5★ + 20 bookings)
+
+  // Payout wallet
+  payoutMethodJson    Json?
+  availableBalanceEgp Int  @default(0)
+  pendingBalanceEgp   Int  @default(0)
+  totalEarnedEgp      Int  @default(0)
+  lastPayoutAt        DateTime?
+
   // Status
   isActive       Boolean  @default(true)
   isOnHoliday    Boolean  @default(false)
@@ -723,9 +778,11 @@ model PetFriendProfile {
   availabilityTemplates  PetFriendAvailabilityTemplate[]
   availabilityOverrides  PetFriendAvailabilityOverride[]
   certifications         PetFriendCertification[]
+  payouts                PetFriendPayout[] @relation("ProfilePayouts")
 
   @@index([lat, lng])
   @@index([isActive, isVerified])
+  @@index([status])
   @@map("petfriend_profiles")
 }
 
@@ -1460,21 +1517,38 @@ model PaymentTransaction {
 
 model PetFriendPayout {
   id             String               @id @default(uuid())
-  petFriendId    String               // was: sitterId
-  petFriend      User                 @relation(fields: [petFriendId], references: [id])
+  petFriendId    String               // User id — was: sitterId
+  petFriend      User                 @relation("UserPayouts", fields: [petFriendId], references: [id])
+  // Link to PetFriendProfile for new payout flows
+  petFriendProfileId  String?
+  petFriendProfile    PetFriendProfile? @relation("ProfilePayouts", fields: [petFriendProfileId], references: [id])
   bookingId      String?
   booking        Booking?             @relation(fields: [bookingId], references: [id])
   amount         Decimal              @db.Decimal(10, 2)
   payoutMethod   ProviderPayoutMethod
   destination    String?
   status         PayoutStatus         @default(pending)
+  // Enhanced payout tracking
+  type                  PayoutType    @default(SCHEDULED)
+  commissionEgp         Int           @default(0)
+  netEgp                Int           @default(0)
+  scheduledFor          DateTime?
+  requestedAt           DateTime?
+  completedAt           DateTime?
+  failedAt              DateTime?
+  bookingsCount         Int           @default(0)
+  bookingIds            String[]
+  instantCashoutFeeEgp  Int           @default(0)
   gatewayRef     String?
   scheduledAt    DateTime?
   processedAt    DateTime?
   failureReason  String?
   createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
 
   @@index([petFriendId, status])
+  @@index([petFriendProfileId, status])
+  @@index([scheduledFor])
   @@map("petfriend_payouts")
 }
 
@@ -1486,6 +1560,18 @@ model ProcessedWebhookEvent {
 
   @@index([eventId])
   @@map("processed_webhook_events")
+}
+
+model PricingBounds {
+  id            String   @id @default(cuid())
+  serviceType   String   @unique  // "HOUR" | "DAY" | "NIGHT" | "WALK"
+  minEgp        Int
+  defaultMaxEgp Int      // max for new providers
+  eliteMaxEgp   Int      // max for 4.5+ rating & 20+ bookings
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("pricing_bounds")
 }
 
 // ============================================================

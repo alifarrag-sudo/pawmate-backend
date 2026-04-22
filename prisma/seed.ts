@@ -708,32 +708,36 @@ async function main() {
   // SITTER PAYOUTS
   // ============================================================
 
-  await prisma.sitterPayout.createMany({
+  await prisma.petFriendPayout.createMany({
     skipDuplicates: true,
     data: [
       {
         id: 'seed-payout-sara-1',
-        sitterId: sara.id,
+        petFriendId: sara.id,
         bookingId: booking1.id,
         amount: 127.50,
         payoutMethod: 'vodafone_cash',
         status: 'completed',
+        netEgp: 128,
         processedAt: daysAgo(3),
         createdAt: daysAgo(3),
+        updatedAt: daysAgo(3),
       },
       {
         id: 'seed-payout-omar-1',
-        sitterId: omar.id,
+        petFriendId: omar.id,
         bookingId: booking2.id,
         amount: 1190,
         payoutMethod: 'bank_transfer',
         status: 'completed',
+        netEgp: 1190,
         processedAt: daysAgo(5),
         createdAt: daysAgo(5),
+        updatedAt: daysAgo(5),
       },
     ],
   });
-  console.log('Sitter payouts created');
+  console.log('PetFriend payouts created');
 
   // ============================================================
   // NOTIFICATIONS
@@ -797,6 +801,24 @@ async function main() {
   console.log('');
   console.log('============================================================');
   console.log('               PawMate Egypt - Seed Complete!               ');
+  // ============================================================
+  // PRICING BOUNDS
+  // ============================================================
+  const pricingBoundsData = [
+    { serviceType: 'HOUR',  minEgp: 50,  defaultMaxEgp: 200,  eliteMaxEgp: 400 },
+    { serviceType: 'DAY',   minEgp: 150, defaultMaxEgp: 600,  eliteMaxEgp: 1200 },
+    { serviceType: 'NIGHT', minEgp: 200, defaultMaxEgp: 800,  eliteMaxEgp: 1500 },
+    { serviceType: 'WALK',  minEgp: 50,  defaultMaxEgp: 150,  eliteMaxEgp: 300 },
+  ];
+  for (const bound of pricingBoundsData) {
+    await prisma.pricingBounds.upsert({
+      where: { serviceType: bound.serviceType },
+      update: bound,
+      create: bound,
+    });
+  }
+  console.log('PricingBounds seeded: HOUR min=50 max=200/400 | DAY min=150 max=600/1200 | NIGHT min=200 max=800/1500 | WALK min=50 max=150/300');
+
   console.log('============================================================');
   console.log('');
   console.log('=== User Credentials ===');
