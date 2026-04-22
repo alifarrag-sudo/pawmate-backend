@@ -81,6 +81,16 @@ export class AuthController {
     return this.authService.verifyEmailByToken(dto.token);
   }
 
+  // ─── Public: One-Time Login (for direct-created team members) ─────────────
+
+  @Public()
+  @Post('one-time-login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Log in using a one-time login token (sent via email to direct-created team members)' })
+  async oneTimeLogin(@Body() body: { token: string }) {
+    return this.authService.oneTimeLogin(body.token);
+  }
+
   // ─── Public: Token management ──────────────────────────────────────────────
 
   @Public()

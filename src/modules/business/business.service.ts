@@ -10,6 +10,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { MailService } from '../mail/mail.service';
+import { RedisService } from '../../common/services/redis.service';
 import {
   ApplyBusinessDto,
   UpdateBusinessProfileDto,
@@ -24,6 +25,10 @@ import * as crypto from 'crypto';
 import * as bcrypt from 'bcrypt';
 
 const PAGE_SIZE = 20;
+const INVITE_EXPIRY_DAYS = 14;
+const ONE_TIME_LOGIN_EXPIRY_DAYS = 7;
+const FREE_TIER_MAX_TEAM_SIZE = 25;
+const PREMIUM_TIER_MAX_TEAM_SIZE = 50;
 
 @Injectable()
 export class BusinessService {
@@ -33,6 +38,7 @@ export class BusinessService {
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
     private readonly mail: MailService,
+    private readonly redis: RedisService,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -42,8 +48,8 @@ export class BusinessService {
     return crypto.randomBytes(9).toString('base64url').slice(0, 12);
   }
 
-  private generateTempPassword(): string {
-    return crypto.randomBytes(6).toString('base64url');
+  private generateOneTimeLoginToken(): string {
+    return crypto.randomBytes(32).toString('hex');
   }
 
   private async assertOwnerOrManager(userId: string, businessId: string) {
@@ -64,6 +70,25 @@ export class BusinessService {
       throw new ForbiddenException('You are not a member of this business');
     }
     return member;
+  }
+
+  private async assertTeamSizeLimit(businessId: string): Promise<void> {
+    const biz = await this.prisma.businessProfile.findUnique({
+      where: { id: businessId },
+      select: { businessTier: true },
+    });
+    const tier = biz?.businessTier ?? 'FREE';
+    const maxSize = tier === 'PREMIUM' ? PREMIUM_TIER_MAX_TEAM_SIZE : FREE_TIER_MAX_TEAM_SIZE;
+
+    const currentSize = await this.prisma.teamMember.count({
+      where: { businessId, status: { not: 'REMOVED' } },
+    });
+
+    if (currentSize >= maxSize) {
+      throw new ForbiddenException(
+        'Your business has reached the team member limit for your plan. Upgrade to add more members.',
+      );
+    }
   }
 
   private checkAutoApproval(biz: any): boolean {
@@ -143,7 +168,13 @@ export class BusinessService {
     });
     if (!biz) throw new NotFoundException('Business profile not found');
 
-    await this.assertOwnerOrManager(userId, biz.id);
+    // Only OWNER can edit business-level profile
+    const member = await this.prisma.teamMember.findUnique({
+      where: { businessId_userId: { businessId: biz.id, userId } },
+    });
+    if (!member || member.role !== 'OWNER') {
+      throw new ForbiddenException('Only the business owner can edit the business profile');
+    }
 
     const updated = await this.prisma.businessProfile.update({
       where: { id: biz.id },
@@ -345,11 +376,16 @@ export class BusinessService {
   // ── Part C: Team Management ──────────────────────────────────────────────────
 
   async createInvite(userId: string, businessId: string, dto: CreateTeamInviteDto) {
-    await this.assertOwnerOrManager(userId, businessId);
+    const caller = await this.assertOwnerOrManager(userId, businessId);
+
+    // Managers cannot create invites for OWNER role
+    if (caller.role === 'MANAGER' && dto.targetRole === 'OWNER') {
+      throw new ForbiddenException('Managers cannot create invites for the OWNER role');
+    }
 
     const inviteCode = this.generateInviteCode();
     const inviteLinkUrl = `https://pawmateegypt.com/join-team/${inviteCode}`;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
+    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
     const invite = await this.prisma.teamInvite.create({
       data: {
@@ -381,7 +417,15 @@ export class BusinessService {
   }
 
   async directCreateMember(userId: string, businessId: string, dto: DirectCreateTeamMemberDto) {
-    await this.assertOwnerOrManager(userId, businessId);
+    const caller = await this.assertOwnerOrManager(userId, businessId);
+
+    // Managers cannot assign OWNER role
+    if (caller.role === 'MANAGER' && dto.targetRole === 'OWNER') {
+      throw new ForbiddenException('Managers cannot assign the OWNER role');
+    }
+
+    // Enforce team size limit
+    await this.assertTeamSizeLimit(businessId);
 
     // Check if email already exists
     const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
@@ -389,8 +433,9 @@ export class BusinessService {
       throw new ConflictException('A user with this email already exists. Use the invite flow instead.');
     }
 
-    const tempPassword = this.generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    // Generate a random password hash (user will set their own via one-time-login)
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
 
     const result = await this.prisma.$transaction(async (tx) => {
       // Create user
@@ -448,12 +493,19 @@ export class BusinessService {
       return { user: newUser, member, providerProfileId };
     });
 
-    // Send welcome email with credentials
+    // Generate one-time-login token (32-byte hex, stored in Redis with 7-day expiry)
+    const oltToken = this.generateOneTimeLoginToken();
+    const oltTtlSeconds = ONE_TIME_LOGIN_EXPIRY_DAYS * 24 * 60 * 60;
+    await this.redis.setex(`olt:${oltToken}`, oltTtlSeconds, result.user.id);
+
+    const loginLink = `https://pawmatehub.com/auth/one-time?token=${oltToken}`;
+
+    // Send welcome email with one-time-login link
     const biz = await this.prisma.businessProfile.findUnique({ where: { id: businessId } });
-    await this.mail.sendTeamWelcomeWithCredentials(
+    await this.mail.sendTeamWelcomeWithLoginLink(
       { email: dto.email, firstName: dto.firstName },
       biz?.businessName ?? 'PawMate Business',
-      tempPassword,
+      loginLink,
     );
 
     this.events.emit('team.member_direct_created', {
@@ -466,7 +518,7 @@ export class BusinessService {
       member: result.member,
       userId: result.user.id,
       email: dto.email,
-      tempPasswordSent: true,
+      oneTimeLoginLinkSent: true,
     };
   }
 
@@ -492,6 +544,11 @@ export class BusinessService {
     });
     if (existingMember && existingMember.status !== 'REMOVED') {
       throw new ConflictException('You are already a member of this business');
+    }
+
+    // Enforce team size limit (only for new members, not re-activations)
+    if (!existingMember) {
+      await this.assertTeamSizeLimit(invite.businessId);
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
@@ -618,7 +675,7 @@ export class BusinessService {
     memberId: string,
     dto: UpdateTeamMemberDto,
   ) {
-    await this.assertOwnerOrManager(userId, businessId);
+    const caller = await this.assertOwnerOrManager(userId, businessId);
 
     const target = await this.prisma.teamMember.findUnique({ where: { id: memberId } });
     if (!target || target.businessId !== businessId) {
@@ -626,6 +683,11 @@ export class BusinessService {
     }
     if (target.role === 'OWNER') {
       throw new ForbiddenException('Cannot modify the OWNER role member');
+    }
+
+    // Managers cannot promote anyone to OWNER
+    if (caller.role === 'MANAGER' && (dto as any).role === 'OWNER') {
+      throw new ForbiddenException('Managers cannot assign the OWNER role');
     }
 
     return this.prisma.teamMember.update({

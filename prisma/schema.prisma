@@ -2368,6 +2368,9 @@ model BusinessProfile {
   // Services offered (roll-up of team)
   servicesJson         Json?          // aggregated view of what team can do
 
+  // Tier (team size limits)
+  businessTier         String         @default("FREE") // "FREE" or "PREMIUM"
+
   // Status
   status               BusinessStatus @default(PENDING_DOCS)
   appliedAt            DateTime       @default(now())

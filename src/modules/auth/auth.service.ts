@@ -723,6 +723,51 @@ export class AuthService {
     return { message: 'Password changed. Please log in again.' };
   }
 
+  // ─── One-Time Login (for direct-created team members) ────────────────────
+
+  async oneTimeLogin(token: string) {
+    const userId = await this.redis.get(`olt:${token}`);
+    if (!userId) {
+      throw new BadRequestException({
+        error: 'TOKEN_INVALID',
+        message: 'Invalid or expired one-time login link.',
+      });
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isBanned) {
+      throw new UnauthorizedException({
+        error: 'ACCOUNT_BANNED',
+        message: `Account suspended. Reason: ${user.banReason || 'Policy violation'}`,
+      });
+    }
+
+    // Delete the token (single-use)
+    await this.redis.del(`olt:${token}`);
+
+    // Mark email as verified (operator created this account)
+    if (!user.emailVerified) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true, emailVerifiedAt: new Date(), lastLoginAt: new Date() } as any,
+      });
+    } else {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+    }
+
+    this.eventEmitter.emit('user.logged_in', { userId: user.id, method: 'one_time_login' });
+
+    const tokens = await this.generateTokenPair(user);
+    return { ...tokens, user: formatUser(user) };
+  }
+
   // ─── Private helpers ───────────────────────────────────────────────────────
 
   private async generateTokenPair(user: any, ipAddress?: string, userAgent?: string) {

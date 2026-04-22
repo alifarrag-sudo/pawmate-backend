@@ -288,6 +288,57 @@ describe('AuthService', () => {
     });
   });
 
+  // ─── One-Time Login ──────────────────────────────────────────────────
+
+  describe('oneTimeLogin', () => {
+    it('should log in with valid one-time token', async () => {
+      mockRedis.get.mockResolvedValue('user-1');
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1', email: 'new@test.com', firstName: 'New', lastName: 'User',
+        roles: ['PARENT', 'PETFRIEND'], authProvider: 'email', emailVerified: false,
+        activeRole: 'petfriend', isParent: true, isPetFriend: true,
+        isBanned: false, createdAt: new Date(),
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+
+      const result = await service.oneTimeLogin('valid-olt-token');
+
+      expect(result.accessToken).toBeDefined();
+      expect(result.user.email).toBe('new@test.com');
+      expect(mockRedis.del).toHaveBeenCalledWith('olt:valid-olt-token');
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith('user.logged_in', expect.objectContaining({
+        userId: 'user-1', method: 'one_time_login',
+      }));
+    });
+
+    it('should reject invalid/expired one-time token', async () => {
+      mockRedis.get.mockResolvedValue(null);
+
+      await expect(service.oneTimeLogin('bad-olt-token'))
+        .rejects.toThrow(BadRequestException);
+    });
+
+    it('should not work on re-use (token deleted after first use)', async () => {
+      // First use succeeds
+      mockRedis.get.mockResolvedValueOnce('user-1');
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user-1', email: 'new@test.com', firstName: 'New', lastName: 'User',
+        roles: ['PARENT'], authProvider: 'email', emailVerified: false,
+        activeRole: 'parent', isParent: true, isPetFriend: false,
+        isBanned: false, createdAt: new Date(),
+      });
+      mockPrisma.user.update.mockResolvedValue({});
+
+      await service.oneTimeLogin('once-only-token');
+      expect(mockRedis.del).toHaveBeenCalledWith('olt:once-only-token');
+
+      // Second use fails (token gone)
+      mockRedis.get.mockResolvedValueOnce(null);
+      await expect(service.oneTimeLogin('once-only-token'))
+        .rejects.toThrow(BadRequestException);
+    });
+  });
+
   // ─── Get Me ────────────────────────────────────────────────────────────
 
   describe('getMe', () => {
