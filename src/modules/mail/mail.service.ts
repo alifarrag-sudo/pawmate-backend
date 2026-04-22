@@ -119,6 +119,56 @@ export class MailService {
     );
   }
 
+  async sendTeamInvite(
+    invitee: { email: string; name: string },
+    businessName: string,
+    inviteLink: string,
+  ): Promise<void> {
+    await this.send(
+      invitee.email,
+      `You're invited to join ${businessName} on PawMate`,
+      this.wrapTemplate(`
+        <h1 style="color: #2C1810; font-size: 24px; margin-bottom: 12px;">Join ${this.escapeHtml(businessName)} on PawMate</h1>
+        <p style="color: #5C4A3E; font-size: 16px; line-height: 1.6;">
+          Hi${invitee.name ? ' ' + this.escapeHtml(invitee.name) : ''}, you've been invited to join
+          <strong>${this.escapeHtml(businessName)}</strong> as a team member on PawMate — Egypt's pet care platform.
+        </p>
+        <a href="${inviteLink}" style="display: inline-block; background: #E8723A; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 16px;">
+          Accept Invite
+        </a>
+        <p style="color: #8B7A6B; font-size: 13px; margin-top: 24px;">
+          This invite expires in 7 days. If you didn't expect this, you can safely ignore it.
+        </p>
+      `),
+    );
+  }
+
+  async sendTeamWelcomeWithCredentials(
+    user: { email: string; firstName: string },
+    businessName: string,
+    tempPassword: string,
+  ): Promise<void> {
+    await this.send(
+      user.email,
+      `Welcome to ${businessName} on PawMate — your account is ready`,
+      this.wrapTemplate(`
+        <h1 style="color: #2C1810; font-size: 24px; margin-bottom: 12px;">Welcome to ${this.escapeHtml(businessName)}!</h1>
+        <p style="color: #5C4A3E; font-size: 16px; line-height: 1.6;">
+          Hi ${this.escapeHtml(user.firstName)}, your PawMate account has been created by ${this.escapeHtml(businessName)}.
+          Use the credentials below to log in:
+        </p>
+        <div style="background: #FAF8F5; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="color: #2C1810; font-size: 14px; margin: 4px 0;"><strong>Email:</strong> ${this.escapeHtml(user.email)}</p>
+          <p style="color: #2C1810; font-size: 14px; margin: 4px 0;"><strong>Temporary Password:</strong> ${this.escapeHtml(tempPassword)}</p>
+        </div>
+        <p style="color: #C85450; font-size: 14px;">Please change your password after first login.</p>
+        <a href="https://pawmateegypt.com" style="display: inline-block; background: #E8723A; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px; margin-top: 16px;">
+          Log In to PawMate
+        </a>
+      `),
+    );
+  }
+
   async sendPasswordReset(user: { email: string; firstName: string }, token: string): Promise<void> {
     const link = `https://pawmateegypt.com/reset?t=${token}`;
     await this.send(

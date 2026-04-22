@@ -32,6 +32,7 @@ import { PetFriendModule } from './modules/petfriend/petfriend.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { TrainerModule } from './modules/trainer/trainer.module';
+import { BusinessModule } from './modules/business/business.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { TrainerModule } from './modules/trainer/trainer.module';
     AnalyticsModule,
     ReferralsModule,
     TrainerModule,
+    BusinessModule,
   ],
 })
 export class AppModule {}

@@ -26,6 +26,7 @@ enum ActiveRole {
   parent     // was: owner
   petfriend  // was: sitter
   trainer
+  operator   // business owner/manager mode
 }
 
 enum LoyaltyTier {
@@ -470,6 +471,48 @@ enum PayoutType {
 }
 
 // ============================================================
+// OPERATOR / BUSINESS ENUMS (Prompt 10)
+// ============================================================
+
+enum BusinessType {
+  KENNEL
+  PET_HOTEL
+  VET_CLINIC
+  SHOP
+  GROOMING_SALON
+  TRAINING_ACADEMY
+  MULTI_SERVICE
+}
+
+enum BusinessStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+enum TeamRole {
+  OWNER
+  MANAGER
+  PROVIDER
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
+enum InviteStatus {
+  PENDING
+  USED
+  EXPIRED
+  REVOKED
+}
+
+// ============================================================
 // USERS
 // ============================================================
 
@@ -587,6 +630,10 @@ model User {
   accountCreditEgp    Int               @default(0)
   referralsMade       Referral[]        @relation("ReferralsMade")
   referralsReceived   Referral[]        @relation("ReferralsReceived")
+
+  // Operator / Business (Prompt 10)
+  businessProfile     BusinessProfile?
+  teamMemberships     TeamMember[]      @relation("TeamMemberships")
 
   // DEFERRED: Community feature
   adoptionPosts         AdoptionPost[]       @relation("AdoptionPoster")
@@ -2281,6 +2328,143 @@ model EventBridgeDelivery {
   @@index([delivered, createdAt])
   @@index([eventName])
   @@map("event_bridge_deliveries")
+}
+
+// ============================================================
+// OPERATOR / BUSINESS PROFILES (Prompt 10)
+// ============================================================
+
+model BusinessProfile {
+  id                   String         @id @default(cuid())
+  ownerId              String         @unique
+  owner                User           @relation(fields: [ownerId], references: [id])
+
+  // Identity
+  businessName         String
+  businessType         BusinessType
+  description          String?        @db.Text
+  logoUrl              String?
+  coverPhotoUrl        String?
+  photosUrls           String[]       @default([])
+
+  // Legal
+  commercialRegNumber  String?
+  taxCard              String?        // Cloudinary URL for tax card doc
+  commercialRegDocUrl  String?
+
+  // Contact
+  businessEmail        String
+  businessPhone        String
+  whatsappNumber       String?
+  websiteUrl           String?
+
+  // Location
+  primaryAddress       String
+  primaryCity          String
+  primaryLat           Float?
+  primaryLng           Float?
+  branches             BusinessBranch[]
+
+  // Services offered (roll-up of team)
+  servicesJson         Json?          // aggregated view of what team can do
+
+  // Status
+  status               BusinessStatus @default(PENDING_DOCS)
+  appliedAt            DateTime       @default(now())
+  autoApprovedAt       DateTime?
+  adminReviewedAt      DateTime?
+
+  // Reputation (aggregated from team)
+  totalBookings        Int            @default(0)
+  averageRating        Float?
+
+  // Team
+  teamMembers          TeamMember[]
+  invites              TeamInvite[]
+
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  @@index([primaryCity])
+  @@index([status])
+  @@index([businessType])
+  @@map("business_profiles")
+}
+
+model BusinessBranch {
+  id          String          @id @default(cuid())
+  businessId  String
+  business    BusinessProfile @relation(fields: [businessId], references: [id])
+  name        String
+  address     String
+  city        String
+  lat         Float?
+  lng         Float?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+
+  @@index([businessId])
+  @@map("business_branches")
+}
+
+model TeamMember {
+  id                    String           @id @default(cuid())
+  businessId            String
+  business              BusinessProfile  @relation(fields: [businessId], references: [id])
+  userId                String
+  user                  User             @relation("TeamMemberships", fields: [userId], references: [id])
+
+  role                  TeamRole         @default(PROVIDER)
+  providerType          ProviderType     // PETFRIEND or TRAINER
+  providerProfileId     String?          // links to PetFriendProfile or TrainerProfile
+
+  // Permissions granted by operator
+  canAcceptBookings     Boolean          @default(true)
+  canSetOwnAvailability Boolean          @default(true)
+  canMessageParents     Boolean          @default(true)
+  canWithdrawEarnings   Boolean          @default(true) // if false: operator manages payouts
+
+  // Status
+  status                TeamMemberStatus @default(ACTIVE)
+  joinedAt              DateTime         @default(now())
+  suspendedAt           DateTime?
+  suspendedReason       String?
+  removedAt             DateTime?
+
+  // Assignment
+  assignedBranchId      String?
+
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+
+  @@unique([businessId, userId])
+  @@index([businessId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model TeamInvite {
+  id                 String          @id @default(cuid())
+  businessId         String
+  business           BusinessProfile @relation(fields: [businessId], references: [id])
+  inviteCode         String          @unique
+  inviteLinkUrl      String?         // full deep-link URL
+  invitedEmail       String?         // optional; if set, invite pre-fills on signup
+  invitedPhone       String?
+  invitedName        String?
+  targetRole         TeamRole        @default(PROVIDER)
+  targetProviderType ProviderType    @default(PETFRIEND)
+
+  createdBy          String          // userId of operator/manager who created
+  createdAt          DateTime        @default(now())
+  expiresAt          DateTime        // default 7 days from creation
+  usedAt             DateTime?
+  usedByUserId       String?
+  status             InviteStatus    @default(PENDING)
+
+  @@index([inviteCode])
+  @@index([businessId, status])
+  @@map("team_invites")
 }
 
 // ============================================================

@@ -4,7 +4,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import sharp from 'sharp';
 import { Request } from 'express';
 
-export type UploadFolder = 'profile_photos' | 'pet_photos' | 'social_posts' | 'id_documents' | 'trainer_videos' | 'facility_photos';
+export type UploadFolder = 'profile_photos' | 'pet_photos' | 'social_posts' | 'id_documents' | 'trainer_videos' | 'facility_photos' | 'business_docs';
 
 export interface UploadResult {
   url: string;
