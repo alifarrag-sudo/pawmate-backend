@@ -5,6 +5,7 @@ import { PetFriendService } from './petfriend.service';
 import { PetFriendPayoutService } from './petfriend-payout.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { MailService } from '../mail/mail.service';
 import { PetFriendStatus, ProviderPayoutMethod } from '@prisma/client';
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -82,7 +83,11 @@ function makeEventEmitterMock() {
 }
 
 function makeUploadsMock() {
-  return { uploadImage: jest.fn() };
+  return { uploadImage: jest.fn(), uploadFile: jest.fn() };
+}
+
+function makeMailMock() {
+  return { sendPetFriendRejection: jest.fn().mockResolvedValue(undefined) };
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -94,11 +99,13 @@ describe('PetFriendService', () => {
   let prisma: ReturnType<typeof makePrismaMock>;
   let eventEmitter: ReturnType<typeof makeEventEmitterMock>;
   let uploads: ReturnType<typeof makeUploadsMock>;
+  let mail: ReturnType<typeof makeMailMock>;
 
   beforeEach(async () => {
     prisma = makePrismaMock();
     eventEmitter = makeEventEmitterMock();
     uploads = makeUploadsMock();
+    mail = makeMailMock();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -106,6 +113,7 @@ describe('PetFriendService', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: EventEmitter2, useValue: eventEmitter },
         { provide: UploadsService, useValue: uploads },
+        { provide: MailService, useValue: mail },
       ],
     }).compile();
 
@@ -369,8 +377,8 @@ describe('PetFriendService', () => {
   // ────────────────────────────────────────────────────────────────────────────
 
   describe('instantCashout', () => {
-    it('calculates fee as Math.ceil(balance * 0.02)', async () => {
-      // Arrange — balance 500 EGP → fee = round(500 * 0.02) = 10
+    it('calculates fee as Math.ceil(balance * 0.03) — 500 EGP → fee 15', async () => {
+      // Arrange — balance 500 EGP → fee = ceil(500 * 0.03) = 15
       const profile = makeProfile({
         status: PetFriendStatus.APPROVED,
         availableBalanceEgp: 500,
@@ -385,20 +393,20 @@ describe('PetFriendService', () => {
       // Act
       const result = await service.instantCashout('user-1');
 
-      // Assert — service uses Math.round(500 * 0.02) = 10 EGP fee
-      expect(result.feeEgp).toBe(10);
-      expect(result.netEgp).toBe(490);
+      // Assert — 3% fee, net = 485
+      expect(result.feeEgp).toBe(15);
+      expect(result.netEgp).toBe(485);
       expect(result.amount).toBe(500);
     });
 
-    it('calculates fee for non-round balance (e.g. 333 EGP → fee = round(333*0.02) = 7)', async () => {
+    it('calculates fee for minimum balance (100 EGP → fee = ceil(3) = 3, net = 97)', async () => {
       // Arrange
       const profile = makeProfile({
         status: PetFriendStatus.APPROVED,
-        availableBalanceEgp: 333,
+        availableBalanceEgp: 100,
         payoutMethodJson: null,
       });
-      const payoutRecord = { id: 'payout-2', status: 'pending' };
+      const payoutRecord = { id: 'payout-min', status: 'pending' };
 
       prisma.petFriendProfile.findUnique.mockResolvedValue(profile);
       prisma.petFriendPayout.create.mockResolvedValue(payoutRecord);
@@ -407,9 +415,30 @@ describe('PetFriendService', () => {
       // Act
       const result = await service.instantCashout('user-1');
 
-      // Assert — Math.round(333 * 0.02) = Math.round(6.66) = 7
-      expect(result.feeEgp).toBe(7);
-      expect(result.netEgp).toBe(326);
+      // Assert — ceil(100 * 0.03) = ceil(3) = 3, net = 97
+      expect(result.feeEgp).toBe(3);
+      expect(result.netEgp).toBe(97);
+    });
+
+    it('uses Math.ceil for fractional fees (150 EGP → fee = ceil(4.5) = 5, net = 145)', async () => {
+      // Arrange
+      const profile = makeProfile({
+        status: PetFriendStatus.APPROVED,
+        availableBalanceEgp: 150,
+        payoutMethodJson: null,
+      });
+      const payoutRecord = { id: 'payout-ceil', status: 'pending' };
+
+      prisma.petFriendProfile.findUnique.mockResolvedValue(profile);
+      prisma.petFriendPayout.create.mockResolvedValue(payoutRecord);
+      prisma.petFriendProfile.update.mockResolvedValue(profile);
+
+      // Act
+      const result = await service.instantCashout('user-1');
+
+      // Assert — ceil(150 * 0.03) = ceil(4.5) = 5, net = 145
+      expect(result.feeEgp).toBe(5);
+      expect(result.netEgp).toBe(145);
     });
 
     it('rejects cashout when available balance is below 100 EGP minimum', async () => {
@@ -605,6 +634,10 @@ describe('PetFriendPayoutService', () => {
   let eventEmitter: ReturnType<typeof makeEventEmitterMock>;
 
   beforeEach(async () => {
+    // Enable Paymob payout feature flag so cron proceeds in tests
+    process.env.PAYMOB_PAYOUT_API_KEY = 'test-payout-key';
+    process.env.PAYMOB_PAYOUT_MERCHANT_ID = 'test-merchant-id';
+
     prisma = makePrismaMock();
     eventEmitter = makeEventEmitterMock();
 
@@ -619,7 +652,11 @@ describe('PetFriendPayoutService', () => {
     payoutService = module.get<PetFriendPayoutService>(PetFriendPayoutService);
   });
 
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    delete process.env.PAYMOB_PAYOUT_API_KEY;
+    delete process.env.PAYMOB_PAYOUT_MERCHANT_ID;
+    jest.clearAllMocks();
+  });
 
   // ────────────────────────────────────────────────────────────────────────────
   // 6. Payout cron — empty state

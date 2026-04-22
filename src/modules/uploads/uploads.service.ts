@@ -148,6 +148,55 @@ export class UploadsService {
     });
   }
 
+  get cloudinaryReady(): boolean {
+    return this.ready;
+  }
+
+  /**
+   * Upload a raw file (image or PDF) without sharp processing.
+   * Used for KYC documents where we need to preserve the original file.
+   */
+  async uploadFile(
+    buffer: Buffer,
+    mimeType: string,
+    folder: UploadFolder,
+  ): Promise<UploadResult> {
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new BadRequestException('File too large. Maximum size is 10 MB.');
+    }
+
+    if (!this.ready) {
+      const placeholder = `https://placehold.co/800x600/FF6B35/FFFFFF?text=PawMate+Doc`;
+      return { url: placeholder, publicId: `dev_placeholder_${Date.now()}`, width: 800, height: 600 };
+    }
+
+    const isPdf = mimeType === 'application/pdf';
+    const resourceType = isPdf ? 'raw' : 'image';
+
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder: `pawmate/${folder}`,
+          resource_type: resourceType,
+          ...(isPdf ? {} : { format: 'jpg', transformation: [{ quality: 'auto', fetch_format: 'auto' }] }),
+        },
+        (error, result) => {
+          if (error || !result) {
+            this.logger.error(`Cloudinary file upload failed: ${error?.message}`);
+            return reject(new BadRequestException('File upload failed. Please try again.'));
+          }
+          resolve({
+            url: result.secure_url,
+            publicId: result.public_id,
+            width: result.width ?? 0,
+            height: result.height ?? 0,
+          });
+        },
+      );
+      stream.end(buffer);
+    });
+  }
+
   async deleteImage(publicId: string): Promise<void> {
     if (!this.ready || publicId.startsWith('dev_placeholder')) return;
     try {

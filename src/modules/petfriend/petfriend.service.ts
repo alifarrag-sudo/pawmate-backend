@@ -9,13 +9,14 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
+import { MailService } from '../mail/mail.service';
 import { UpdatePetFriendProfileDto } from './petfriend.dto';
 import { PetFriendStatus, ProviderPayoutMethod } from '@prisma/client';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
 // ──────────────────────────────────────────────────────────────────────────────
-const INSTANT_CASHOUT_FEE_RATE = 0.02;   // 2%
+const INSTANT_CASHOUT_FEE_RATE = 0.03;   // 3%
 const INSTANT_CASHOUT_MIN_EGP  = 100;    // Minimum 100 EGP to request instant cashout
 const ELITE_MIN_RATING          = 4.5;
 const ELITE_MIN_BOOKINGS        = 20;
@@ -62,6 +63,7 @@ export class PetFriendService {
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly mail: MailService,
   ) {}
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -401,7 +403,7 @@ export class PetFriendService {
       );
     }
 
-    const feeEgp = Math.round(available * INSTANT_CASHOUT_FEE_RATE);
+    const feeEgp = Math.ceil(available * INSTANT_CASHOUT_FEE_RATE);
     const netEgp = available - feeEgp;
 
     const payout = await this.prisma.petFriendPayout.create({
@@ -504,6 +506,17 @@ export class PetFriendService {
       reason,
       adminUserId,
     });
+
+    if (action === 'reject') {
+      this.prisma.user.findUnique({
+        where: { id: profile.userId },
+        select: { email: true, firstName: true },
+      }).then(user => {
+        if (user) {
+          return this.mail.sendPetFriendRejection(user, reason);
+        }
+      }).catch(e => this.logger.warn(`sendPetFriendRejection failed: ${e.message}`));
+    }
 
     return updated;
   }

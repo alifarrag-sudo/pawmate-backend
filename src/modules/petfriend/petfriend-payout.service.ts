@@ -32,6 +32,18 @@ export class PetFriendPayoutService {
   // ──────────────────────────────────────────────────────────────────────────
   @Cron('0 6 1,15 * *')
   async runScheduledPayouts() {
+    // Paymob payout disbursement feature flag — checked at runtime so tests can set env vars
+    const paymobPayoutEnabled =
+      !!process.env.PAYMOB_PAYOUT_API_KEY && !!process.env.PAYMOB_PAYOUT_MERCHANT_ID;
+
+    if (!paymobPayoutEnabled) {
+      this.logger.warn(
+        'Scheduled payout skipped — PAYMOB_PAYOUT_API_KEY/PAYMOB_PAYOUT_MERCHANT_ID not configured. ' +
+        'Payouts will be processed manually until Paymob payout account is active.',
+      );
+      return;
+    }
+
     this.logger.log('Starting bi-monthly scheduled payout run...');
 
     const profiles = await this.prisma.petFriendProfile.findMany({
