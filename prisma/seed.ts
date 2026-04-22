@@ -809,6 +809,12 @@ async function main() {
     { serviceType: 'DAY',   minEgp: 150, defaultMaxEgp: 600,  eliteMaxEgp: 1200 },
     { serviceType: 'NIGHT', minEgp: 200, defaultMaxEgp: 800,  eliteMaxEgp: 1500 },
     { serviceType: 'WALK',  minEgp: 50,  defaultMaxEgp: 150,  eliteMaxEgp: 300 },
+    // Trainer service pricing bounds (Prompt 9)
+    { serviceType: 'TRAINING_SESSION_1HR',  minEgp: 150,  defaultMaxEgp: 500,   eliteMaxEgp: 1200 },
+    { serviceType: 'TRAINING_SESSION_2HR',  minEgp: 250,  defaultMaxEgp: 900,   eliteMaxEgp: 2200 },
+    { serviceType: 'TRAINING_PACKAGE_6',    minEgp: 800,  defaultMaxEgp: 2500,  eliteMaxEgp: 6000 },
+    { serviceType: 'TRAINING_PROGRAM_8WK',  minEgp: 2500, defaultMaxEgp: 8000,  eliteMaxEgp: 18000 },
+    { serviceType: 'BEHAVIOR_ASSESSMENT',   minEgp: 200,  defaultMaxEgp: 600,   eliteMaxEgp: 1500 },
   ];
   for (const bound of pricingBoundsData) {
     await prisma.pricingBounds.upsert({

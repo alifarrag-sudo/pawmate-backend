@@ -25,6 +25,7 @@ enum UserRole {
 enum ActiveRole {
   parent     // was: owner
   petfriend  // was: sitter
+  trainer
 }
 
 enum LoyaltyTier {
@@ -454,6 +455,15 @@ enum PetFriendStatus {
   DEACTIVATED    // PetFriend voluntarily paused listing
 }
 
+enum TrainerStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
 enum PayoutType {
   SCHEDULED
   INSTANT
@@ -838,47 +848,84 @@ model PetFriendCertification {
 }
 
 // ============================================================
-// TRAINER PROFILES
+// TRAINER PROFILES (Prompt 9 — specialist provider)
 // ============================================================
 
 model TrainerProfile {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bio             String?
-  yearsExperience Int      @default(0)
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Credentials
-  certifications     Json     @default("[]") // array of { name, issuedBy, documentUrl, isVerified }
-  specializations    String[] // obedience, puppy_training, behavior_modification, aggression, service_dog, agility, trick_training, other
-  methodsDescription String?
-  facilityPhotos     String[] @default([]) // min 3
-  videoIntroUrl      String?
+  // Identity
+  bio                   String?   @db.Text
+  specialties           String[]  @default([])  // ["OBEDIENCE","BEHAVIOR_CORRECTION","PUPPY","AGGRESSION","AGILITY","SERVICE_DOG"]
+  experienceYears       Int?
+  languages             String[]  @default(["Arabic"])
+  city                  String?
 
-  // Booking lead time
-  bookingLeadHours Int @default(24)
+  // Documents (Cloudinary URLs)
+  profilePhotoUrl       String?
+  idFrontUrl            String?
+  idBackUrl             String?
+  certificationsJson    Json?     // [{name, issuer, year, url}] — at least one required for approval
+  showcaseVideoUrl      String?   // optional intro video
 
-  // Performance
-  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int     @default(0)
+  // Service delivery
+  inHomeVisits          Boolean   @default(false)
+  ownFacility           Boolean   @default(false)
+  facilityAddress       String?
+  facilityPhotosUrls    String[]  @default([])
+  virtualSessions       Boolean   @default(false)
+  serviceRadiusKm       Int       @default(10)  // for in-home visits
+  baseLat               Float?
+  baseLng               Float?
 
-  // Location
-  lat             Decimal? @db.Decimal(10, 8)
-  lng             Decimal? @db.Decimal(11, 8)
-  addressCity     String?
-  addressDistrict String?
+  // Services offered with pricing
+  servicesJson          Json?     // [{type, priceEgp, description, deliveryMode}]
 
-  // Verification
-  isVerified Boolean @default(false)
-  isActive   Boolean @default(true)
+  // Availability
+  availabilityJson      Json?
+  maxSessionsPerDay     Int       @default(4)
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  // Status
+  status                TrainerStatus @default(PENDING_DOCS)
+  appliedAt             DateTime  @default(now())
+  autoApprovedAt        DateTime?
+  adminReviewedAt       DateTime?
+  adminReviewedBy       String?
+  rejectionReason       String?
+  suspendedUntil        DateTime?
 
+  // Reputation
+  totalSessions         Int       @default(0)
+  totalPrograms         Int       @default(0)
+  averageRating         Float?
+  fiveStarCount         Int       @default(0)
+  commissionRate        Float     @default(0.15)
+
+  // Payout
+  payoutMethodJson      Json?
+  availableBalanceEgp   Int       @default(0)
+  pendingBalanceEgp     Int       @default(0)
+  totalEarnedEgp        Int       @default(0)
+  lastPayoutAt          DateTime?
+
+  // Performance tracking
+  completionRate        Float?    // programs completed vs started
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  bookings              Booking[] @relation("TrainerBookings")
+  trainerPayouts        TrainerPayout[]
+
+  // Legacy relations kept for migration compatibility
   offerings             TrainerOffering[]
   availabilityTemplates TrainerAvailabilityTemplate[]
 
-  @@index([isActive, isVerified])
+  @@index([status])
+  @@index([city])
+  @@index([averageRating])
   @@map("trainer_profiles")
 }
 
@@ -1268,9 +1315,17 @@ model Booking {
   petFriend    User?  @relation("BookingPetFriend", fields: [petFriendId], references: [id])
 
   // Provider references (only one will be set based on serviceType)
+  trainerProfileId  String?
+  trainerProfile    TrainerProfile? @relation("TrainerBookings", fields: [trainerProfileId], references: [id])
   trainerId    String?
   kennelId     String?
   petHotelId   String?
+
+  // Trainer session/program tracking
+  sessionPackageId   String?   // for multi-session bookings
+  sessionsCompleted  Int       @default(0)
+  sessionsTotal      Int?      // for packages/programs
+  trainerNotes       Json?     // [{sessionNum, date, notes, homework}]
 
   bookingType  BookingType
   serviceType  ServiceType
@@ -1358,6 +1413,7 @@ model Booking {
   @@index([petFriendId, status, createdAt(sort: Desc)])
   @@index([status, requestedStart])
   @@index([petFriendId])
+  @@index([trainerProfileId])
   @@index([paymentStatus])
   @@index([parentId, status])
   @@map("bookings")
@@ -1557,6 +1613,37 @@ model PetFriendPayout {
   @@index([petFriendProfileId, status])
   @@index([scheduledFor])
   @@map("petfriend_payouts")
+}
+
+// ── Trainer Payouts (polymorphic — separate from PetFriendPayout) ──
+
+model TrainerPayout {
+  id                   String               @id @default(cuid())
+  trainerId            String               // TrainerProfile.id
+  trainerProfile       TrainerProfile       @relation(fields: [trainerId], references: [id])
+  bookingId            String?
+  amount               Decimal              @db.Decimal(10, 2)
+  payoutMethod         ProviderPayoutMethod
+  destination          String?
+  status               PayoutStatus         @default(pending)
+  type                 PayoutType           @default(SCHEDULED)
+  commissionEgp        Int                  @default(0)
+  netEgp               Int                  @default(0)
+  scheduledFor         DateTime?
+  requestedAt          DateTime?
+  completedAt          DateTime?
+  failedAt             DateTime?
+  bookingsCount        Int                  @default(0)
+  bookingIds           String[]
+  instantCashoutFeeEgp Int                  @default(0)
+  gatewayRef           String?
+  failureReason        String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([trainerId, status])
+  @@index([scheduledFor])
+  @@map("trainer_payouts")
 }
 
 model ProcessedWebhookEvent {

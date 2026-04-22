@@ -31,6 +31,7 @@ import { EventBridgeModule } from './modules/events/event-bridge.module';
 import { PetFriendModule } from './modules/petfriend/petfriend.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
+import { TrainerModule } from './modules/trainer/trainer.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
     PetFriendModule,
     AnalyticsModule,
     ReferralsModule,
+    TrainerModule,
   ],
 })
 export class AppModule {}

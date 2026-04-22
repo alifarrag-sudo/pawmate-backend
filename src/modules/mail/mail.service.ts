@@ -88,6 +88,37 @@ export class MailService {
     );
   }
 
+  async sendTrainerRejection(
+    user: { email: string; firstName: string },
+    reason: string | undefined,
+  ): Promise<void> {
+    const reasonBlock = reason
+      ? `<p style="color: #5C4A3E; font-size: 14px; background: #FAF8F5; border-left: 3px solid #E8723A; padding: 12px 16px; border-radius: 4px; margin: 16px 0;">
+            <strong>Reason:</strong> ${this.escapeHtml(reason)}
+          </p>`
+      : '';
+
+    await this.send(
+      user.email,
+      'Your PawMate Trainer application',
+      this.wrapTemplate(`
+        <h1 style="color: #2C1810; font-size: 24px; margin-bottom: 12px;">Application update</h1>
+        <p style="color: #5C4A3E; font-size: 16px; line-height: 1.6;">
+          Hi ${this.escapeHtml(user.firstName)}, thank you for applying to become a Trainer on PawMate.
+          After reviewing your credentials, we're unable to approve your application at this time.
+        </p>
+        ${reasonBlock}
+        <p style="color: #5C4A3E; font-size: 14px; line-height: 1.6; margin-top: 16px;">
+          You're welcome to re-apply once the issue has been resolved. If you have questions,
+          reply to this email and our team will be happy to help.
+        </p>
+        <a href="https://pawmateegypt.com/support" style="display: inline-block; background: #E8723A; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin-top: 16px;">
+          Contact Support
+        </a>
+      `),
+    );
+  }
+
   async sendPasswordReset(user: { email: string; firstName: string }, token: string): Promise<void> {
     const link = `https://pawmateegypt.com/reset?t=${token}`;
     await this.send(
