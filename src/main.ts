@@ -72,7 +72,7 @@ async function bootstrap() {
   // Swagger API docs (dev + staging only)
   if (process.env.NODE_ENV !== 'production') {
     const config = new DocumentBuilder()
-      .setTitle('PawMate Egypt API')
+      .setTitle('PawMateHub API')
       .setDescription('Pet care marketplace for Egypt — complete API documentation')
       .setVersion('1.0')
       .addBearerAuth()

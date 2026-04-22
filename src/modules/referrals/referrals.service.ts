@@ -51,7 +51,7 @@ export class ReferralsService {
    */
   async getShareInfo(userId: string) {
     const code = await this.generateReferralCode(userId);
-    const shareMessage = `Join PawMate — pet care you can trust. Use code ${code} and we both get rewarded: https://pawmate.app/${code}`;
+    const shareMessage = `Join PawMateHub — pet care you can trust. Use code ${code} and we both get rewarded: https://pawmatehub.com/${code}`;
 
     return { code, shareMessage };
   }

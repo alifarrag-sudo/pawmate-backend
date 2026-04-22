@@ -59,7 +59,7 @@ export class PaymobService {
           {
             name: 'Pet Care Service',
             amount_cents: params.amountCents,
-            description: 'PawMate pet sitting service',
+            description: 'PawMateHub pet sitting service',
             quantity: 1,
           },
         ],

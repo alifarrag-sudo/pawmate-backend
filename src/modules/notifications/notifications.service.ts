@@ -309,7 +309,7 @@ export class NotificationsService {
       data: { type: 'food_order_picked_up', orderId },
     });
     await this.saveNotification(sellerUserId, 'food_order_picked_up', '💰 Payment Received!',
-      `${sellerEarning} EGP added to wallet. Thanks for selling on PawMate!`, { orderId });
+      `${sellerEarning} EGP added to wallet. Thanks for selling on PawMateHub!`, { orderId });
   }
 
   // ============================================================
@@ -356,7 +356,7 @@ export class NotificationsService {
   async sendSms(phone: string, message: string): Promise<void> {
     const apiKey = this.config.get('VONAGE_API_KEY');
     const apiSecret = this.config.get('VONAGE_API_SECRET');
-    const from = this.config.get('VONAGE_FROM_NUMBER', 'PawMate');
+    const from = this.config.get('VONAGE_FROM_NUMBER', 'PawMateHub');
 
     if (this.config.get('NODE_ENV') === 'development') {
       this.logger.debug(`[DEV SMS to ${phone}]: ${message}`);

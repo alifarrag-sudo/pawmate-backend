@@ -484,7 +484,7 @@ export class AuthService {
       this.logger.debug(`[DEV] Email verify code for ${email}: ${code}`);
     }
 
-    (this.notifications as any).sendEmail?.(email, 'Verify your PawMate email', `Your verification code is: ${code}. Valid for 10 minutes.`)
+    (this.notifications as any).sendEmail?.(email, 'Verify your PawMateHub email', `Your verification code is: ${code}. Valid for 10 minutes.`)
       ?.catch?.(() => {});
 
     const response: any = { message: 'Verification code sent to your email.' };
@@ -548,7 +548,7 @@ export class AuthService {
     if (process.env.NODE_ENV !== 'production') {
       this.logger.debug(`[DEV] SMS code for ${phone}: ${code}`);
     } else {
-      await this.notifications.sendSms(phone, `Your PawMate code: ${code}. Valid 5 minutes.`);
+      await this.notifications.sendSms(phone, `Your PawMateHub code: ${code}. Valid 5 minutes.`);
     }
 
     const response: any = { message: 'SMS code sent.' };

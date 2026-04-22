@@ -384,7 +384,7 @@ export class BusinessService {
     }
 
     const inviteCode = this.generateInviteCode();
-    const inviteLinkUrl = `https://pawmateegypt.com/join-team/${inviteCode}`;
+    const inviteLinkUrl = `https://pawmatehub.com/join-team/${inviteCode}`;
     const expiresAt = new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
     const invite = await this.prisma.teamInvite.create({
@@ -407,7 +407,7 @@ export class BusinessService {
       const biz = await this.prisma.businessProfile.findUnique({ where: { id: businessId } });
       await this.mail.sendTeamInvite(
         { email: dto.email, name: dto.name ?? '' },
-        biz?.businessName ?? 'PawMate Business',
+        biz?.businessName ?? 'PawMateHub Business',
         inviteLinkUrl,
       );
     }
@@ -504,7 +504,7 @@ export class BusinessService {
     const biz = await this.prisma.businessProfile.findUnique({ where: { id: businessId } });
     await this.mail.sendTeamWelcomeWithLoginLink(
       { email: dto.email, firstName: dto.firstName },
-      biz?.businessName ?? 'PawMate Business',
+      biz?.businessName ?? 'PawMateHub Business',
       loginLink,
     );
 

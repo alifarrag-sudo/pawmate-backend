@@ -119,7 +119,7 @@ export class UploadsService {
 
     if (!this.ready) {
       // Dev fallback: return a placeholder URL
-      const placeholder = `https://placehold.co/${maxWidth}x${maxWidth}/FF6B35/FFFFFF?text=PawMate`;
+      const placeholder = `https://placehold.co/${maxWidth}x${maxWidth}/FF6B35/FFFFFF?text=PawMateHub`;
       return { url: placeholder, publicId: `dev_placeholder_${Date.now()}`, width: maxWidth, height: maxWidth };
     }
 
@@ -166,7 +166,7 @@ export class UploadsService {
     }
 
     if (!this.ready) {
-      const placeholder = `https://placehold.co/800x600/FF6B35/FFFFFF?text=PawMate+Doc`;
+      const placeholder = `https://placehold.co/800x600/FF6B35/FFFFFF?text=PawMateHub+Doc`;
       return { url: placeholder, publicId: `dev_placeholder_${Date.now()}`, width: 800, height: 600 };
     }
 
