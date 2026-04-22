@@ -572,6 +572,12 @@ model User {
   kennelProfile         KennelProfile?
   petHotelProfile       PetHotelProfile?
 
+  // Referral system
+  referralCode        String?           @unique
+  accountCreditEgp    Int               @default(0)
+  referralsMade       Referral[]        @relation("ReferralsMade")
+  referralsReceived   Referral[]        @relation("ReferralsReceived")
+
   // DEFERRED: Community feature
   adoptionPosts         AdoptionPost[]       @relation("AdoptionPoster")
   adoptionMessagesSent  AdoptionMessage[]    @relation("AdoptionMsgSender")
@@ -585,6 +591,7 @@ model User {
   @@index([idVerified, isActive, isBanned])
   @@index([authProvider, authProviderId])
   @@index([emailVerified])
+  @@index([referralCode])
   @@map("users")
 }
 
@@ -1645,6 +1652,8 @@ model Notification {
   title       String
   body        String
   data        Json     @default("{}")
+  targetRole  String   @default("ANY") // "PARENT" | "PETFRIEND" | "ANY"
+  deepLink    String?                  // e.g. "/booking/abc123"
   isRead      Boolean  @default(false)
   isPushSent  Boolean  @default(false)
   isSmsSent   Boolean  @default(false)
@@ -2185,4 +2194,39 @@ model EventBridgeDelivery {
   @@index([delivered, createdAt])
   @@index([eventName])
   @@map("event_bridge_deliveries")
+}
+
+// ============================================================
+// REFERRALS
+// ============================================================
+
+enum ReferralStatus {
+  PENDING        // code shared, not yet used
+  SIGNED_UP      // referee signed up with code
+  QUALIFIED      // referee completed qualifying event
+  REWARDED       // referrer received reward
+  EXPIRED        // 90 days no action
+}
+
+model Referral {
+  id                String         @id @default(cuid())
+  referrerUserId    String
+  referrer          User           @relation("ReferralsMade", fields: [referrerUserId], references: [id])
+  referralCode      String
+  refereeUserId     String?
+  referee           User?          @relation("ReferralsReceived", fields: [refereeUserId], references: [id])
+  refereeRole       String?        // "PARENT" or "PETFRIEND"
+  status            ReferralStatus @default(PENDING)
+  rewardEgp         Int            @default(0)
+  rewardType        String?        // "CREDIT" or "CASH"
+  qualifyingEventId String?        // booking ID that qualified the referral
+  createdAt         DateTime       @default(now())
+  qualifiedAt       DateTime?
+  rewardedAt        DateTime?
+
+  @@index([referrerUserId])
+  @@index([referralCode])
+  @@index([refereeUserId])
+  @@index([status])
+  @@map("referrals")
 }

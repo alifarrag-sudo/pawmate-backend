@@ -44,11 +44,11 @@ export class NotificationsService {
     await this.sendPushToUser(sitter.id, {
       title: 'New Booking Request',
       body: `You have a new ${booking.serviceType.replace('_', ' ')} request. Respond within 10 minutes!`,
-      data: { type: 'booking_request', bookingId: booking.id },
+      data: { type: 'booking_request', bookingId: booking.id, target_role: 'PETFRIEND', deep_link: `/booking/${booking.id}` },
     });
     await this.saveNotification(sitter.id, 'booking_request', 'New Booking Request',
       `You have a new ${booking.serviceType.replace('_', ' ')} request. Respond within 10 minutes!`,
-      { bookingId: booking.id });
+      { bookingId: booking.id }, 'PETFRIEND', `/booking/${booking.id}`);
   }
 
   @OnEvent('booking.accepted')
@@ -62,10 +62,10 @@ export class NotificationsService {
     await this.sendPushToUser(booking.ownerId, {
       title: '🎉 Booking Confirmed!',
       body: `${name} accepted your booking. See you soon!`,
-      data: { type: 'booking_accepted', bookingId: booking.id },
+      data: { type: 'booking_accepted', bookingId: booking.id, target_role: 'PARENT', deep_link: `/booking/${booking.id}` },
     });
     await this.saveNotification(booking.ownerId, 'booking_accepted', 'Booking Confirmed!',
-      `${name} accepted your booking.`, { bookingId: booking.id });
+      `${name} accepted your booking.`, { bookingId: booking.id }, 'PARENT', `/booking/${booking.id}`);
   }
 
   @OnEvent('booking.declined')
@@ -79,7 +79,7 @@ export class NotificationsService {
     await this.sendPushToUser(booking.ownerId, {
       title: 'No Sitters Available',
       body: 'No available sitters found for your request. Try a different time or expand your search area.',
-      data: { type: 'no_sitters', bookingId: booking.id },
+      data: { type: 'no_sitters', bookingId: booking.id, target_role: 'PARENT' },
     });
   }
 
@@ -88,7 +88,7 @@ export class NotificationsService {
     await this.sendPushToUser(booking.ownerId, {
       title: '✅ Service Started',
       body: 'Your sitter has started the service. Track care activities in real-time.',
-      data: { type: 'booking_started', bookingId: booking.id },
+      data: { type: 'booking_started', bookingId: booking.id, target_role: 'PARENT', deep_link: `/booking/${booking.id}` },
     });
   }
 
@@ -97,13 +97,14 @@ export class NotificationsService {
     await this.sendPushToUser(booking.ownerId, {
       title: '🏁 Service Ended',
       body: 'The service has ended. Please confirm to release payment.',
-      data: { type: 'booking_ended', bookingId: booking.id },
+      data: { type: 'booking_ended', bookingId: booking.id, target_role: 'PARENT', deep_link: `/booking/${booking.id}` },
     });
   }
 
   @OnEvent('booking.cancelled')
   async onBookingCancelled({ booking, cancelledBy, cancellationType }: any) {
     const notifyUserId = cancelledBy === 'owner' ? booking.petFriendId : booking.ownerId;
+    const targetRole = cancelledBy === 'owner' ? 'PETFRIEND' : 'PARENT';
     const message = cancelledBy === 'owner'
       ? 'The owner has cancelled this booking.'
       : 'The sitter has cancelled this booking. You will receive a full refund.';
@@ -111,7 +112,7 @@ export class NotificationsService {
     await this.sendPushToUser(notifyUserId, {
       title: 'Booking Cancelled',
       body: message,
-      data: { type: 'booking_cancelled', bookingId: booking.id },
+      data: { type: 'booking_cancelled', bookingId: booking.id, target_role: targetRole, deep_link: `/booking/${booking.id}` },
     });
   }
 
@@ -120,7 +121,7 @@ export class NotificationsService {
     await this.sendPushToUser(ownerId, {
       title: '🐾 Walk Started!',
       body: 'Your pet\'s walk has begun. Tap to track live.',
-      data: { type: 'walk_started', sessionId },
+      data: { type: 'walk_started', sessionId, target_role: 'PARENT' },
     });
   }
 
@@ -129,7 +130,7 @@ export class NotificationsService {
     await this.sendPushToUser(ownerId, {
       title: '🏡 Walk Complete!',
       body: `Walk finished: ${(stats.distanceM / 1000).toFixed(1)}km in ${Math.round(stats.durationSeconds / 60)} minutes.`,
-      data: { type: 'walk_ended', bookingId: task?.bookingId },
+      data: { type: 'walk_ended', bookingId: task?.bookingId, target_role: 'PARENT' },
     });
   }
 
@@ -383,9 +384,11 @@ export class NotificationsService {
     title: string,
     body: string,
     data: Record<string, any> = {},
+    targetRole: string = 'ANY',
+    deepLink?: string,
   ): Promise<void> {
     await this.prisma.notification.create({
-      data: { userId, type, title, body, data },
+      data: { userId, type, title, body, data, targetRole, deepLink },
     });
   }
 
