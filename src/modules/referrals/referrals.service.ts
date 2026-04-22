@@ -131,6 +131,10 @@ export class ReferralsService {
     };
   }
 
+  // Reward constants
+  private static readonly PARENT_REFERRAL_REWARD_EGP = 50;   // parent referee → referrer gets credit
+  private static readonly PETFRIEND_REFERRAL_REWARD_EGP = 75; // petfriend referee → referrer gets cash (wired in future)
+
   /**
    * Event handler: when new parent completes first booking.
    * Referrer gets 50 EGP credit.
@@ -170,31 +174,32 @@ export class ReferralsService {
         },
       });
 
-      // Reward: 50 EGP credit to referrer
+      // Reward: PARENT_REFERRAL_REWARD_EGP credit to referrer
+      const reward = ReferralsService.PARENT_REFERRAL_REWARD_EGP;
       await this.prisma.$transaction([
         this.prisma.referral.update({
           where: { id: referral.id },
           data: {
             status: 'REWARDED',
             rewardedAt: new Date(),
-            rewardEgp: 50,
+            rewardEgp: reward,
             rewardType: 'CREDIT',
           },
         }),
         this.prisma.user.update({
           where: { id: referral.referrerUserId },
-          data: { accountCreditEgp: { increment: 50 } },
+          data: { accountCreditEgp: { increment: reward } },
         }),
       ]);
 
       this.eventEmitter.emit('referral.rewarded', {
         referrerId: referral.referrerUserId,
         refereeId: parentId,
-        rewardEgp: 50,
+        rewardEgp: reward,
         rewardType: 'CREDIT',
       });
 
-      this.logger.log(`Referral rewarded: referrer=${referral.referrerUserId} reward=50 EGP credit`);
+      this.logger.log(`Referral rewarded: referrer=${referral.referrerUserId} reward=${reward} EGP credit`);
     } catch (err: any) {
       this.logger.error(`Referral qualification failed: ${err.message}`);
     }
