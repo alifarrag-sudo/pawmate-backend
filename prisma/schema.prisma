@@ -622,7 +622,7 @@ model User {
   waitlistEntries       UserWaitlist[]
   payoutMethods         PayoutMethodRecord[]
   trainerProfile        TrainerProfile?
-  kennelProfile         KennelProfile?
+  // kennelProfile moved to BusinessProfile in Prompt 12
   petHotelProfile       PetHotelProfile?
 
   // Referral system
@@ -1026,81 +1026,168 @@ model TrainerAvailabilityTemplate {
 }
 
 // ============================================================
-// KENNEL PROFILES
+// KENNEL PROFILES (Prompt 12 — linked to BusinessProfile)
 // ============================================================
 
 model KennelProfile {
-  id     String @id @default(uuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  // Business info
-  businessName       String
-  commercialRegister String? // سجل تجاري — marks as "Verified Business" if provided
-  businessLicense    String? // document URL
-  taxCardNumber      String?
-  ownerName          String?
-
-  // Contact
-  businessPhone String?
-  businessEmail String?
+  id                    String    @id @default(cuid())
+  businessProfileId     String    @unique
+  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
   // Facility
-  addressLine     String?
-  city            String?
-  district        String?
-  lat             Decimal? @db.Decimal(10, 8)
-  lng             Decimal? @db.Decimal(11, 8)
-  facilityPhotos  String[] @default([]) // min 5: exterior, interior, rooms, play, feeding
-  totalCapacity   Int?
-  operatingHours  Json?    // { mon: { open, close, closed }, ... }
-  daysOpen        String[] // ["mon","tue","wed","thu","fri","sat","sun"]
+  totalUnits            Int
+  facilityType          KennelFacilityType @default(STANDARD)
+  acceptsCats           Boolean   @default(false)
+  acceptsDogs           Boolean   @default(true)
+  acceptsOtherPets      Boolean   @default(false)
+  maxPetWeightKg        Int?      // per-unit weight limit
 
-  // Pet acceptance
-  petTypesAccepted  String[] // dog, cat, other
-  sizesAccepted     String[] // WeightCategory values
+  // Services
+  providesFood          Boolean   @default(false)  // else parent brings food
+  providesBedding       Boolean   @default(true)
+  providesPlayArea      Boolean   @default(false)
+  playAreaHoursPerDay   Int?
+  walksPerDay           Int       @default(2)
+  photoUpdatesPerDay    Int       @default(1)
+  airConditioned        Boolean   @default(true)
+  heated                Boolean   @default(true)
+  securityMonitored     Boolean   @default(true)
 
-  // Amenities
-  amenities         String[] // outdoor_play, indoor_play, ac, heating, cctv, grooming, vet_oncall, pool, individual_rooms, group_housing
-
-  // Safety
-  hasIsolationArea  Boolean @default(false)
-  emergencyVetName  String?
-  emergencyVetPhone String?
+  // Operating hours for pickup/drop-off
+  pickupDropoffJson     Json      // { mon: {open: "08:00", close: "20:00"}, ... }
 
   // Pricing
-  standardRatePerNight  Decimal? @db.Decimal(8, 2)
-  premiumRatePerNight   Decimal? @db.Decimal(8, 2)
-  daycareRatePerDay     Decimal? @db.Decimal(8, 2)
-  extraServices         Json?    // [{ name, price }]
-  pickupDropoffAvail    Boolean  @default(false)
-  pickupDropoffPrice    Decimal? @db.Decimal(8, 2)
+  pricePerNightEgp      Int
+  pricePerNightLongStayEgp  Int?  // for 7+ nights, discounted rate
+  longStayThresholdNights   Int   @default(7)
 
-  // Requirements
-  vaccinesRequired     String[] // list of required vaccine names
-  requiresAssessment   Boolean  @default(false)
-  requiresTrialDay     Boolean  @default(false)
+  // Requirements (intake checklist)
+  requiresVaccinationProof    Boolean   @default(true)
+  requiresDewormingProof      Boolean   @default(true)
+  requiresHealthCertificate   Boolean   @default(false)
+  requiredVaccines            String[]  @default(["rabies", "DHPP", "bordetella"])  // for dogs
+  requiredCatVaccines         String[]  @default(["FVRCP", "rabies"])
 
-  // Stay limits
-  minStayNights Int?
-  maxStayNights Int?
+  // Legal
+  liabilityWaiverText         String   @db.Text  // editable per-kennel, defaults to template
+  liabilityWaiverVersion      Int      @default(1)
 
-  // Performance
-  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int     @default(0)
+  // Status
+  status                KennelStatus @default(PENDING_DOCS)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  // Verification
-  verificationStatus VerificationStatus @default(PENDING)
-  isVerified         Boolean            @default(false)
-  verifiedAt         DateTime?
+  units                 KennelUnit[]
+  stays                 KennelStay[]
 
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([city, isActive, isVerified])
-  @@index([lat, lng])
+  @@index([status])
   @@map("kennel_profiles")
+}
+
+enum KennelFacilityType {
+  STANDARD      // basic cages
+  LUXURY        // larger runs, outdoor access
+  MEDICAL       // for pets with medical needs
+  SMALL_DOG_ONLY
+  LARGE_DOG_ONLY
+}
+
+enum KennelStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+model KennelUnit {
+  id              String    @id @default(cuid())
+  kennelProfileId String
+  kennelProfile   KennelProfile @relation(fields: [kennelProfileId], references: [id])
+
+  unitNumber      String    // "A-1", "A-2", or whatever numbering kennel uses
+  unitType        String    // "STANDARD", "DELUXE", "MEDICAL", etc.
+  sizeSquareMeters Decimal? @db.Decimal(6, 2)
+  hasOutdoorAccess Boolean  @default(false)
+  suitableForSize String[]  @default(["SMALL", "MEDIUM"])  // dog size
+  maxOccupancy    Int       @default(1)  // sometimes 2 pets share
+
+  photosUrls      String[]  @default([])
+  notes           String?   @db.Text
+
+  isActive        Boolean   @default(true)
+  inMaintenanceUntil  DateTime?
+
+  stays           KennelStay[]
+
+  @@index([kennelProfileId])
+  @@unique([kennelProfileId, unitNumber])
+  @@map("kennel_units")
+}
+
+model KennelStay {
+  id                  String    @id @default(cuid())
+  bookingId           String    @unique
+  booking             Booking   @relation(fields: [bookingId], references: [id])
+  kennelProfileId     String
+  kennelProfile       KennelProfile @relation(fields: [kennelProfileId], references: [id])
+  kennelUnitId        String?
+  kennelUnit          KennelUnit? @relation(fields: [kennelUnitId], references: [id])
+
+  // Timing
+  checkInAt           DateTime
+  expectedCheckOutAt  DateTime
+  actualCheckInAt     DateTime?
+  actualCheckOutAt    DateTime?
+
+  // Intake
+  intakePhotos        String[]  @default([])  // Cloudinary URLs
+  intakeWeight        Decimal?  @db.Decimal(5, 2)
+  intakeNotes         String?   @db.Text
+  intakeDoneBy        String?   // team member userId
+  intakeDoneAt        DateTime?
+
+  // Documents at intake
+  vaccinationDocsUrls String[]  @default([])
+  dewormingDocsUrls   String[]  @default([])
+  healthCertUrls      String[]  @default([])
+  liabilityWaiverSignedAt  DateTime?
+  liabilityWaiverVersion   Int?
+  liabilityWaiverSignatureUrl  String?  // signed waiver PDF Cloudinary URL
+
+  // Parent-provided food/meds
+  foodProvidedByParent Boolean  @default(false)
+  medicationsJson      Json?    // array of {name, schedule, dose, notes}
+
+  // Daily logs
+  dailyUpdatesJson     Json?    // per-day: {date, mood, appetite, exerciseMinutes, notes, photoUrls}
+
+  // Discharge
+  dischargePhotos      String[]  @default([])
+  dischargeWeight      Decimal?  @db.Decimal(5, 2)
+  dischargeNotes       String?   @db.Text
+  dischargeDoneBy      String?
+  dischargeDoneAt      DateTime?
+
+  status               KennelStayStatus @default(CONFIRMED)
+
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@index([kennelProfileId, status])
+  @@index([checkInAt])
+  @@map("kennel_stays")
+}
+
+enum KennelStayStatus {
+  CONFIRMED
+  AWAITING_INTAKE
+  IN_STAY
+  READY_FOR_DISCHARGE
+  DISCHARGED
+  CANCELLED
+  MEDICAL_HOLD  // kennel keeping pet longer for medical reason
 }
 
 // ============================================================
@@ -1455,6 +1542,7 @@ model Booking {
   careLogs          CareLog[]
   overtimeLog       OvertimeLog?
   endCode           BookingEndCode?      // 4-digit service end code
+  kennelStay        KennelStay?          // Prompt 12: kennel boarding stay
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -2384,6 +2472,9 @@ model BusinessProfile {
   // Team
   teamMembers          TeamMember[]
   invites              TeamInvite[]
+
+  // Kennel-specific profile (Prompt 12)
+  kennelProfile        KennelProfile?
 
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
