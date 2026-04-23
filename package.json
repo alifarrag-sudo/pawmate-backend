@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "PawMate Egypt - Pet Care Marketplace Backend",
   "scripts": {
-    "build": "nest build",
+    "build": "prisma generate && prisma migrate deploy && nest build",
     "start": "node dist/main",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
