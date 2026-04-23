@@ -2504,3 +2504,42 @@ model Referral {
   @@index([status])
   @@map("referrals")
 }
+
+// ============================================================
+// WEB PLATFORM SUPPORT (PawMateHub web — Prompt 10.5)
+// ============================================================
+
+enum ContactType {
+  PARENT
+  PROVIDER
+  BUSINESS
+  PRESS
+  OTHER
+}
+
+model ContactSubmission {
+  id        String      @id @default(uuid())
+  name      String
+  email     String
+  type      ContactType
+  message   String      @db.Text
+  createdAt DateTime    @default(now())
+
+  @@index([email])
+  @@index([type, createdAt(sort: Desc)])
+  @@map("contact_submissions")
+}
+
+model WebApplicationDraft {
+  id        String    @id @default(uuid())
+  userId    String?   @unique  // null for guest applications
+  email     String?   @unique  // guest identifier when userId is null
+  step      Int       @default(1)
+  data      Json      @default("{}")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([email])
+  @@map("web_application_drafts")
+}

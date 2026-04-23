@@ -90,21 +90,24 @@ async function bootstrap() {
       .addTag('places', 'Pet-friendly places')
       .addTag('notifications', 'Push & in-app notifications')
       .addTag('admin', 'Admin operations')
+      .addTag('support', 'Web platform contact & support')
+      .addTag('investor', 'Investor portal — metrics & documents')
+      .addTag('web-application', 'Multi-step provider application drafts')
       .build();
 
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('api/docs', app, document, {
       swaggerOptions: { persistAuthorization: true },
     });
-    console.log(`📚 Swagger docs available at: http://localhost:${process.env.PORT || 3000}/api/docs`);
+    console.log(`Swagger docs available at: http://localhost:${process.env.PORT || 3000}/api/docs`);
   }
 
   // Health endpoint served by HealthController at GET /api/v1/health
 
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`🚀 PawMate API running on port ${port}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`PawMate API running on port ${port}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 }
 
 bootstrap();
