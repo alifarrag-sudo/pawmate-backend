@@ -23,10 +23,10 @@ enum UserRole {
 }
 
 enum ActiveRole {
-  parent     // was: owner
-  petfriend  // was: sitter
+  parent // was: owner
+  petfriend // was: sitter
   trainer
-  operator   // business owner/manager mode
+  operator // business owner/manager mode
 }
 
 enum LoyaltyTier {
@@ -55,10 +55,10 @@ enum PetGender {
 }
 
 enum WeightCategory {
-  small    // < 5kg
-  medium   // 5-15kg
-  large    // 15-30kg
-  xlarge   // > 30kg
+  small // < 5kg
+  medium // 5-15kg
+  large // 15-30kg
+  xlarge // > 30kg
 }
 
 enum MedicationFrequency {
@@ -80,10 +80,10 @@ enum ScheduleType {
 }
 
 enum AgeCategory {
-  puppy    // 0-1 yr
-  young    // 1-3 yr
-  adult    // 3-7 yr
-  senior   // 7+ yr
+  puppy // 0-1 yr
+  young // 1-3 yr
+  adult // 3-7 yr
+  senior // 7+ yr
 }
 
 enum NeuteredStatus {
@@ -161,7 +161,7 @@ enum BookingStatus {
   accepted
   active
   ready_for_pickup
-  code_verified   // 4-digit code entered by PetFriend
+  code_verified // 4-digit code entered by PetFriend
   completed
   cancelled
   disputed
@@ -233,7 +233,7 @@ enum PaymentMethod {
 }
 
 enum ServiceLocationType {
-  parent_home   // was: owner_home
+  parent_home // was: owner_home
   petfriend_home // was: sitter_home
   trainer_facility
   kennel
@@ -242,12 +242,12 @@ enum ServiceLocationType {
 }
 
 enum CancellationType {
-  parent_24h_plus    // was: owner_24h_plus
-  parent_24h_minus   // was: owner_24h_minus
-  parent_1h_minus    // was: owner_1h_minus
-  parent_noshow      // was: owner_noshow
-  petfriend_cancel   // was: sitter_cancel
-  petfriend_noshow   // was: sitter_noshow
+  parent_24h_plus // was: owner_24h_plus
+  parent_24h_minus // was: owner_24h_minus
+  parent_1h_minus // was: owner_1h_minus
+  parent_noshow // was: owner_noshow
+  petfriend_cancel // was: sitter_cancel
+  petfriend_noshow // was: sitter_noshow
   admin_cancel
 }
 
@@ -276,8 +276,8 @@ enum DisputeStatus {
 }
 
 enum DisputeResolution {
-  refund_parent    // was: refund_owner
-  pay_petfriend    // was: pay_sitter
+  refund_parent // was: refund_owner
+  pay_petfriend // was: pay_sitter
   partial_resolution
   no_action
 }
@@ -362,7 +362,7 @@ enum PayoutStatus {
 }
 
 enum RevieweeType {
-  parent    // was: owner
+  parent // was: owner
   petfriend // was: sitter
 }
 
@@ -400,12 +400,12 @@ enum DeviceType {
 
 // Provider types for the marketplace
 enum ProviderType {
-  PETFRIEND    // was: SITTER — individual caregiver
+  PETFRIEND // was: SITTER — individual caregiver
   TRAINER
   KENNEL
   PETHOTEL
-  VET          // deferred — waitlist only
-  GROOMER      // deferred — waitlist only
+  VET // deferred — waitlist only
+  GROOMER // deferred — waitlist only
   PRODUCT_SELLER // deferred — waitlist only
 }
 
@@ -448,12 +448,12 @@ enum HomeType {
 }
 
 enum PetFriendStatus {
-  PENDING_DOCS   // started application, missing documents
-  APPROVED       // all docs submitted + auto-approved, listing live
-  ADMIN_REVIEW   // flagged for admin review
-  SUSPENDED      // admin suspended
-  REJECTED       // admin rejected after review
-  DEACTIVATED    // PetFriend voluntarily paused listing
+  PENDING_DOCS // started application, missing documents
+  APPROVED // all docs submitted + auto-approved, listing live
+  ADMIN_REVIEW // flagged for admin review
+  SUSPENDED // admin suspended
+  REJECTED // admin rejected after review
+  DEACTIVATED // PetFriend voluntarily paused listing
 }
 
 enum TrainerStatus {
@@ -513,60 +513,103 @@ enum InviteStatus {
 }
 
 // ============================================================
+// SHOP ENUMS (Prompt 14)
+// ============================================================
+
+enum ShopStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+enum ShopCategory {
+  PET_FOOD
+  TREATS_SNACKS
+  ACCESSORIES
+  GROOMING_PRODUCTS
+  HEALTH_MEDICINE
+  TOYS
+  BEDDING
+  TRAINING_AIDS
+  CLOTHING
+  OTHER
+}
+
+enum DeliveryType {
+  DELIVERY
+  PICKUP
+}
+
+enum ShopOrderStatus {
+  PENDING_PAYMENT
+  PAID
+  CONFIRMED
+  PREPARING
+  DISPATCHED
+  DELIVERED
+  PICKED_UP
+  CANCELLED
+  REFUNDED
+}
+
+// ============================================================
 // USERS
 // ============================================================
 
 model User {
-  id           String   @id @default(uuid())
-  phone        String?  @unique  // optional — email-first auth; phone added later for SMS verify
-  email        String   @unique  // required — DB is NOT NULL; primary identifier for auth flows
-  passwordHash String?           // null for social-login users (Google/Facebook)
+  id           String    @id @default(uuid())
+  phone        String?   @unique // optional — email-first auth; phone added later for SMS verify
+  email        String    @unique // required — DB is NOT NULL; primary identifier for auth flows
+  passwordHash String? // null for social-login users (Google/Facebook)
   firstName    String
   lastName     String
   displayName  String?
   profilePhoto String?
   dateOfBirth  DateTime?
   gender       Gender?
-  role         UserRole @default(user)
+  role         UserRole  @default(user)
 
   // Auth provider tracking
-  authProvider   String  @default("email")  // "email" | "google" | "facebook"
-  authProviderId String?                    // social provider's user ID
+  authProvider   String  @default("email") // "email" | "google" | "facebook"
+  authProviderId String? // social provider's user ID
 
   // Multi-role system — array of active roles for this user
   // Values: "PARENT" | "PETFRIEND" | "TRAINER" | "KENNEL" | "PETHOTEL" | "SHOP" | "GROOMER" | "VET"
-  roles          String[] @default(["PARENT"])
+  roles String[] @default(["PARENT"])
 
   // Legacy role flags — kept for backward compatibility with existing code
-  isParent       Boolean    @default(true)   // was: isOwner
-  isPetFriend    Boolean    @default(false)  // was: isSitter
-  activeRole     ActiveRole @default(parent) // was: owner
+  isParent    Boolean    @default(true) // was: isOwner
+  isPetFriend Boolean    @default(false) // was: isSitter
+  activeRole  ActiveRole @default(parent) // was: owner
 
   // Parent emergency contact
   emergencyContactName  String?
   emergencyContactPhone String?
 
   // Verification
-  idVerified      Boolean   @default(false)
-  idFrontUrl      String?
-  idBackUrl       String?
-  idSelfieUrl     String?
-  idNumber        String?   // Encrypted Egyptian National ID
-  idReviewedAt    DateTime?
-  idReviewedById  String?
-  idReviewer      User?     @relation("IdReviewer", fields: [idReviewedById], references: [id])
-  idReviewees     User[]    @relation("IdReviewer")
+  idVerified     Boolean   @default(false)
+  idFrontUrl     String?
+  idBackUrl      String?
+  idSelfieUrl    String?
+  idNumber       String? // Encrypted Egyptian National ID
+  idReviewedAt   DateTime?
+  idReviewedById String?
+  idReviewer     User?     @relation("IdReviewer", fields: [idReviewedById], references: [id])
+  idReviewees    User[]    @relation("IdReviewer")
 
   // Email + phone verification
-  emailVerified   Boolean   @default(false)  // set true after email code verified or via Google/Facebook
-  emailVerifiedAt DateTime?                  // timestamp of first verification
-  phoneVerified   Boolean   @default(false)  // set true after SMS OTP verified
+  emailVerified   Boolean   @default(false) // set true after email code verified or via Google/Facebook
+  emailVerifiedAt DateTime? // timestamp of first verification
+  phoneVerified   Boolean   @default(false) // set true after SMS OTP verified
 
   // Status
-  isActive      Boolean   @default(true)
-  isBanned      Boolean   @default(false)
-  banReason     String?
-  banExpiresAt  DateTime?
+  isActive     Boolean   @default(true)
+  isBanned     Boolean   @default(false)
+  banReason    String?
+  banExpiresAt DateTime?
 
   // Loyalty
   loyaltyPoints Int         @default(0)
@@ -590,58 +633,59 @@ model User {
   deletedAt   DateTime? // Soft delete
 
   // Relations
-  refreshTokens         RefreshToken[]
-  devices               UserDevice[]
-  savedLocations        UserLocation[]
-  petFriendProfile      PetFriendProfile?    // was: sitterProfile
-  pets                  Pet[]
-  bookingsAsParent      Booking[]            @relation("BookingParent")   // was: BookingOwner
-  bookingsAsPetFriend   Booking[]            @relation("BookingPetFriend") // was: BookingSitter
-  paymentTransactions   PaymentTransaction[]
-  payouts               PetFriendPayout[]    @relation("UserPayouts") // was: SitterPayout
-  reviewsGiven          Review[]             @relation("Reviewer")
-  reviewsReceived       Review[]             @relation("Reviewee")
-  notifications         Notification[]
-  followedBy            Follow[]             @relation("Followee")
-  following             Follow[]             @relation("Follower")
-  loyaltyTransactions   LoyaltyTransaction[]
-  adminActions          AdminAction[]        @relation("AdminActor")
-  cancelledBookings     Booking[]            @relation("CancelledBy")
-  completedCareLogs     CareLog[]            @relation("CareLogCompleter")
-  offersAsParent        Offer[]              @relation("OfferParent")    // was: OfferOwner
-  offersAsPetFriend     Offer[]              @relation("OfferPetFriend") // was: OfferSitter
-  providerProfile       ProviderProfile?
-  providerType          ProviderType?
-  products              Product[]
-  ordersAsBuyer         Order[]              @relation("OrderBuyer")
-  ordersAsSeller        Order[]              @relation("OrderSeller")
-  foodSeller            FoodSeller?
-  foodOrdersAsBuyer     FoodOrder[]          @relation("FoodOrderBuyer")
-  foodReviewsGiven      FoodReview[]         @relation("FoodReviewer")
-  foodReviewsReceived   FoodReview[]         @relation("FoodReviewTarget")
-  waitlistEntries       UserWaitlist[]
-  payoutMethods         PayoutMethodRecord[]
-  trainerProfile        TrainerProfile?
+  refreshTokens       RefreshToken[]
+  devices             UserDevice[]
+  savedLocations      UserLocation[]
+  petFriendProfile    PetFriendProfile? // was: sitterProfile
+  pets                Pet[]
+  bookingsAsParent    Booking[]            @relation("BookingParent") // was: BookingOwner
+  bookingsAsPetFriend Booking[]            @relation("BookingPetFriend") // was: BookingSitter
+  paymentTransactions PaymentTransaction[]
+  payouts             PetFriendPayout[]    @relation("UserPayouts") // was: SitterPayout
+  reviewsGiven        Review[]             @relation("Reviewer")
+  reviewsReceived     Review[]             @relation("Reviewee")
+  notifications       Notification[]
+  followedBy          Follow[]             @relation("Followee")
+  following           Follow[]             @relation("Follower")
+  loyaltyTransactions LoyaltyTransaction[]
+  adminActions        AdminAction[]        @relation("AdminActor")
+  cancelledBookings   Booking[]            @relation("CancelledBy")
+  completedCareLogs   CareLog[]            @relation("CareLogCompleter")
+  offersAsParent      Offer[]              @relation("OfferParent") // was: OfferOwner
+  offersAsPetFriend   Offer[]              @relation("OfferPetFriend") // was: OfferSitter
+  providerProfile     ProviderProfile?
+  providerType        ProviderType?
+  products            Product[]
+  ordersAsBuyer       Order[]              @relation("OrderBuyer")
+  ordersAsSeller      Order[]              @relation("OrderSeller")
+  foodSeller          FoodSeller?
+  foodOrdersAsBuyer   FoodOrder[]          @relation("FoodOrderBuyer")
+  foodReviewsGiven    FoodReview[]         @relation("FoodReviewer")
+  foodReviewsReceived FoodReview[]         @relation("FoodReviewTarget")
+  waitlistEntries     UserWaitlist[]
+  payoutMethods       PayoutMethodRecord[]
+  trainerProfile      TrainerProfile?
   // kennelProfile moved to BusinessProfile in Prompt 12
   // petHotelProfile moved to BusinessProfile in Prompt 13
+  shopOrders          ShopOrder[]          @relation("ShopParentOrders")
 
   // Referral system
-  referralCode        String?           @unique
-  accountCreditEgp    Int               @default(0)
-  referralsMade       Referral[]        @relation("ReferralsMade")
-  referralsReceived   Referral[]        @relation("ReferralsReceived")
+  referralCode      String?    @unique
+  accountCreditEgp  Int        @default(0)
+  referralsMade     Referral[] @relation("ReferralsMade")
+  referralsReceived Referral[] @relation("ReferralsReceived")
 
   // Operator / Business (Prompt 10)
-  businessProfile     BusinessProfile?
-  teamMemberships     TeamMember[]      @relation("TeamMemberships")
+  businessProfile BusinessProfile?
+  teamMemberships TeamMember[]     @relation("TeamMemberships")
 
   // DEFERRED: Community feature
-  adoptionPosts         AdoptionPost[]       @relation("AdoptionPoster")
-  adoptionMessagesSent  AdoptionMessage[]    @relation("AdoptionMsgSender")
-  adoptionMessagesRecv  AdoptionMessage[]    @relation("AdoptionMsgReceiver")
-  causesCreated         Cause[]              @relation("CauseCreator")
-  donations             Donation[]           @relation("Donor")
-  withdrawalRequests    WithdrawalRequest[]  @relation("WithdrawalRequester")
+  adoptionPosts        AdoptionPost[]      @relation("AdoptionPoster")
+  adoptionMessagesSent AdoptionMessage[]   @relation("AdoptionMsgSender")
+  adoptionMessagesRecv AdoptionMessage[]   @relation("AdoptionMsgReceiver")
+  causesCreated        Cause[]             @relation("CauseCreator")
+  donations            Donation[]          @relation("Donor")
+  withdrawalRequests   WithdrawalRequest[] @relation("WithdrawalRequester")
 
   @@index([phone])
   @@index([email])
@@ -653,16 +697,16 @@ model User {
 }
 
 model RefreshToken {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash   String
-  deviceId    String?
-  ipAddress   String?
-  userAgent   String?
-  isRevoked   Boolean  @default(false)
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  deviceId  String?
+  ipAddress String?
+  userAgent String?
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([tokenHash])
@@ -691,7 +735,7 @@ model UserLocation {
   id          String   @id @default(uuid())
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  label       String   // "Home", "Work", custom
+  label       String // "Home", "Work", custom
   addressLine String
   city        String?
   district    String?
@@ -725,13 +769,13 @@ model UserWaitlist {
 // ============================================================
 
 model PayoutMethodRecord {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String   // BANK | VODAFONE_CASH | WALLET
-  details     Json     // { bankName?, accountNumber, accountHolder?, walletNumber?, provider? }
-  isDefault   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // BANK | VODAFONE_CASH | WALLET
+  details   Json // { bankName?, accountNumber, accountHolder?, walletNumber?, provider? }
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@map("payout_method_records")
@@ -742,30 +786,30 @@ model PayoutMethodRecord {
 // ============================================================
 
 model PetFriendProfile {
-  id               String   @id @default(uuid())
-  userId           String   @unique
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  bio              String?
+  id     String  @id @default(uuid())
+  userId String  @unique
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bio    String?
 
   // Home details
   homeType         HomeType?
-  hasYard          Boolean  @default(false)
-  hasOtherPets     Boolean  @default(false)
-  otherPetsDetails String?  // description of other pets
-  hasChildren      Boolean  @default(false)
-  childrenAges     String?  // e.g. "3, 7, 12"
-  placePhotos      String[] @default([]) // min 3 required
+  hasYard          Boolean   @default(false)
+  hasOtherPets     Boolean   @default(false)
+  otherPetsDetails String? // description of other pets
+  hasChildren      Boolean   @default(false)
+  childrenAges     String? // e.g. "3, 7, 12"
+  placePhotos      String[]  @default([]) // min 3 required
 
   // Service pricing (set by PetFriend, in EGP)
-  watchingHourlyRate  Decimal? @db.Decimal(8, 2)  // pet_watching_hourly
-  watchingDailyRate   Decimal? @db.Decimal(8, 2)  // pet_watching_daily (up to 12hrs)
-  overnightRate       Decimal? @db.Decimal(8, 2)  // overnight_stay per night
-  walkRate30min       Decimal? @db.Decimal(8, 2)  // dog_walking 30 min
-  walkRate60min       Decimal? @db.Decimal(8, 2)  // dog_walking 60 min
-  overtimeRatePerHour Decimal? @db.Decimal(8, 2)  // charged after 30-min grace period
+  watchingHourlyRate  Decimal? @db.Decimal(8, 2) // pet_watching_hourly
+  watchingDailyRate   Decimal? @db.Decimal(8, 2) // pet_watching_daily (up to 12hrs)
+  overnightRate       Decimal? @db.Decimal(8, 2) // overnight_stay per night
+  walkRate30min       Decimal? @db.Decimal(8, 2) // dog_walking 30 min
+  walkRate60min       Decimal? @db.Decimal(8, 2) // dog_walking 60 min
+  overtimeRatePerHour Decimal? @db.Decimal(8, 2) // charged after 30-min grace period
 
   // Availability
-  maxPetsSimultaneous Int     @default(1)
+  maxPetsSimultaneous Int      @default(1)
   petTypesAccepted    String[] // dog, cat, both, other
   petSizesAccepted    String[] // WeightCategory values
 
@@ -786,63 +830,63 @@ model PetFriendProfile {
   cancellationRate Decimal @default(0.00) @db.Decimal(5, 2)
 
   // Badges
-  isVerified      Boolean @default(false)
-  isFeatured      Boolean @default(false)
-  instantBook     Boolean @default(false)
+  isVerified  Boolean @default(false)
+  isFeatured  Boolean @default(false)
+  instantBook Boolean @default(false)
 
   // KYC documents (Cloudinary URLs) — stored here for provider-specific docs
-  pccUrl          String?   // Police Clearance Certificate
-  selfieWithIdUrl String?   // Selfie holding ID
+  pccUrl          String? // Police Clearance Certificate
+  selfieWithIdUrl String? // Selfie holding ID
 
   // Service offerings
-  servicesOffered      String[]  @default([])  // e.g. ["BOARDING","DAY_VISIT","WALKING","GROOMING","TRAINING"]
-  acceptsDogs          Boolean   @default(true)
-  acceptsCats          Boolean   @default(true)
-  acceptsOther         Boolean   @default(false)
-  maxPetsPerBooking    Int       @default(3)
-  maxDogSizeKg         Int?
+  servicesOffered   String[] @default([]) // e.g. ["BOARDING","DAY_VISIT","WALKING","GROOMING","TRAINING"]
+  acceptsDogs       Boolean  @default(true)
+  acceptsCats       Boolean  @default(true)
+  acceptsOther      Boolean  @default(false)
+  maxPetsPerBooking Int      @default(3)
+  maxDogSizeKg      Int?
 
   // Simplified integer pricing (EGP) — complement to existing Decimal rates
-  ratePerHour   Int?
-  ratePerDay    Int?
-  ratePerNight  Int?
-  ratePerWalk   Int?
+  ratePerHour  Int?
+  ratePerDay   Int?
+  ratePerNight Int?
+  ratePerWalk  Int?
 
   // Availability JSON (weekly schedule)
   availabilityJson Json?
 
   // Application status workflow
-  status             PetFriendStatus @default(PENDING_DOCS)
-  appliedAt          DateTime        @default(now())
-  autoApprovedAt     DateTime?
-  adminReviewedAt    DateTime?
-  adminReviewedBy    String?
-  rejectionReason    String?
-  suspendedUntil     DateTime?
+  status          PetFriendStatus @default(PENDING_DOCS)
+  appliedAt       DateTime        @default(now())
+  autoApprovedAt  DateTime?
+  adminReviewedAt DateTime?
+  adminReviewedBy String?
+  rejectionReason String?
+  suspendedUntil  DateTime?
 
   // Commission & reputation
-  fiveStarCount   Int   @default(0)
-  commissionRate  Float @default(0.15)  // 0.15 for new, 0.10 for elite (4.5★ + 20 bookings)
+  fiveStarCount  Int   @default(0)
+  commissionRate Float @default(0.15) // 0.15 for new, 0.10 for elite (4.5★ + 20 bookings)
 
   // Payout wallet
   payoutMethodJson    Json?
-  availableBalanceEgp Int  @default(0)
-  pendingBalanceEgp   Int  @default(0)
-  totalEarnedEgp      Int  @default(0)
+  availableBalanceEgp Int       @default(0)
+  pendingBalanceEgp   Int       @default(0)
+  totalEarnedEgp      Int       @default(0)
   lastPayoutAt        DateTime?
 
   // Status
-  isActive       Boolean  @default(true)
-  isOnHoliday    Boolean  @default(false)
+  isActive       Boolean   @default(true)
+  isOnHoliday    Boolean   @default(false)
   holidayEndDate DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  availabilityTemplates  PetFriendAvailabilityTemplate[]
-  availabilityOverrides  PetFriendAvailabilityOverride[]
-  certifications         PetFriendCertification[]
-  payouts                PetFriendPayout[] @relation("ProfilePayouts")
+  availabilityTemplates PetFriendAvailabilityTemplate[]
+  availabilityOverrides PetFriendAvailabilityOverride[]
+  certifications        PetFriendCertification[]
+  payouts               PetFriendPayout[]               @relation("ProfilePayouts")
 
   @@index([lat, lng])
   @@index([isActive, isVerified])
@@ -851,45 +895,45 @@ model PetFriendProfile {
 }
 
 model PetFriendAvailabilityTemplate {
-  id             String           @id @default(uuid())
-  petFriendId    String
-  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
-  dayOfWeek      Int              // 0=Sun, 6=Sat
-  startTime      String           // "09:00"
-  endTime        String           // "18:00"
-  createdAt      DateTime         @default(now())
+  id          String           @id @default(uuid())
+  petFriendId String
+  petFriend   PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int // 0=Sun, 6=Sat
+  startTime   String // "09:00"
+  endTime     String // "18:00"
+  createdAt   DateTime         @default(now())
 
   @@index([petFriendId])
   @@map("petfriend_availability_templates")
 }
 
 model PetFriendAvailabilityOverride {
-  id             String           @id @default(uuid())
-  petFriendId    String
-  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
-  overrideDate   DateTime         @db.Date
-  isAvailable    Boolean
-  startTime      String?
-  endTime        String?
-  reason         String?
-  createdAt      DateTime         @default(now())
+  id           String           @id @default(uuid())
+  petFriendId  String
+  petFriend    PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  overrideDate DateTime         @db.Date
+  isAvailable  Boolean
+  startTime    String?
+  endTime      String?
+  reason       String?
+  createdAt    DateTime         @default(now())
 
   @@index([petFriendId, overrideDate])
   @@map("petfriend_availability_overrides")
 }
 
 model PetFriendCertification {
-  id             String           @id @default(uuid())
-  petFriendId    String
-  petFriend      PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
-  certName       String
-  issuedBy       String?
-  issueDate      DateTime?        @db.Date
-  expiryDate     DateTime?        @db.Date
-  documentUrl    String?
-  isVerified     Boolean          @default(false)
-  verifiedById   String?
-  createdAt      DateTime         @default(now())
+  id           String           @id @default(uuid())
+  petFriendId  String
+  petFriend    PetFriendProfile @relation(fields: [petFriendId], references: [id], onDelete: Cascade)
+  certName     String
+  issuedBy     String?
+  issueDate    DateTime?        @db.Date
+  expiryDate   DateTime?        @db.Date
+  documentUrl  String?
+  isVerified   Boolean          @default(false)
+  verifiedById String?
+  createdAt    DateTime         @default(now())
 
   @@map("petfriend_certifications")
 }
@@ -899,72 +943,72 @@ model PetFriendCertification {
 // ============================================================
 
 model TrainerProfile {
-  id                    String    @id @default(cuid())
-  userId                String    @unique
-  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Identity
-  bio                   String?   @db.Text
-  specialties           String[]  @default([])  // ["OBEDIENCE","BEHAVIOR_CORRECTION","PUPPY","AGGRESSION","AGILITY","SERVICE_DOG"]
-  experienceYears       Int?
-  languages             String[]  @default(["Arabic"])
-  city                  String?
+  bio             String?  @db.Text
+  specialties     String[] @default([]) // ["OBEDIENCE","BEHAVIOR_CORRECTION","PUPPY","AGGRESSION","AGILITY","SERVICE_DOG"]
+  experienceYears Int?
+  languages       String[] @default(["Arabic"])
+  city            String?
 
   // Documents (Cloudinary URLs)
-  profilePhotoUrl       String?
-  idFrontUrl            String?
-  idBackUrl             String?
-  certificationsJson    Json?     // [{name, issuer, year, url}] — at least one required for approval
-  showcaseVideoUrl      String?   // optional intro video
+  profilePhotoUrl    String?
+  idFrontUrl         String?
+  idBackUrl          String?
+  certificationsJson Json? // [{name, issuer, year, url}] — at least one required for approval
+  showcaseVideoUrl   String? // optional intro video
 
   // Service delivery
-  inHomeVisits          Boolean   @default(false)
-  ownFacility           Boolean   @default(false)
-  facilityAddress       String?
-  facilityPhotosUrls    String[]  @default([])
-  virtualSessions       Boolean   @default(false)
-  serviceRadiusKm       Int       @default(10)  // for in-home visits
-  baseLat               Float?
-  baseLng               Float?
+  inHomeVisits       Boolean  @default(false)
+  ownFacility        Boolean  @default(false)
+  facilityAddress    String?
+  facilityPhotosUrls String[] @default([])
+  virtualSessions    Boolean  @default(false)
+  serviceRadiusKm    Int      @default(10) // for in-home visits
+  baseLat            Float?
+  baseLng            Float?
 
   // Services offered with pricing
-  servicesJson          Json?     // [{type, priceEgp, description, deliveryMode}]
+  servicesJson Json? // [{type, priceEgp, description, deliveryMode}]
 
   // Availability
-  availabilityJson      Json?
-  maxSessionsPerDay     Int       @default(4)
+  availabilityJson  Json?
+  maxSessionsPerDay Int   @default(4)
 
   // Status
-  status                TrainerStatus @default(PENDING_DOCS)
-  appliedAt             DateTime  @default(now())
-  autoApprovedAt        DateTime?
-  adminReviewedAt       DateTime?
-  adminReviewedBy       String?
-  rejectionReason       String?
-  suspendedUntil        DateTime?
+  status          TrainerStatus @default(PENDING_DOCS)
+  appliedAt       DateTime      @default(now())
+  autoApprovedAt  DateTime?
+  adminReviewedAt DateTime?
+  adminReviewedBy String?
+  rejectionReason String?
+  suspendedUntil  DateTime?
 
   // Reputation
-  totalSessions         Int       @default(0)
-  totalPrograms         Int       @default(0)
-  averageRating         Float?
-  fiveStarCount         Int       @default(0)
-  commissionRate        Float     @default(0.15)
+  totalSessions  Int    @default(0)
+  totalPrograms  Int    @default(0)
+  averageRating  Float?
+  fiveStarCount  Int    @default(0)
+  commissionRate Float  @default(0.15)
 
   // Payout
-  payoutMethodJson      Json?
-  availableBalanceEgp   Int       @default(0)
-  pendingBalanceEgp     Int       @default(0)
-  totalEarnedEgp        Int       @default(0)
-  lastPayoutAt          DateTime?
+  payoutMethodJson    Json?
+  availableBalanceEgp Int       @default(0)
+  pendingBalanceEgp   Int       @default(0)
+  totalEarnedEgp      Int       @default(0)
+  lastPayoutAt        DateTime?
 
   // Performance tracking
-  completionRate        Float?    // programs completed vs started
+  completionRate Float? // programs completed vs started
 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  bookings              Booking[] @relation("TrainerBookings")
-  trainerPayouts        TrainerPayout[]
+  bookings       Booking[]       @relation("TrainerBookings")
+  trainerPayouts TrainerPayout[]
 
   // Legacy relations kept for migration compatibility
   offerings             TrainerOffering[]
@@ -987,19 +1031,19 @@ model TrainerOffering {
   // For SESSION and CONSULTATION
   durationMinutes Int?
   sessionLocation TrainerSessionLocation?
-  price           Decimal?  @db.Decimal(8, 2)
+  price           Decimal?                @db.Decimal(8, 2)
 
   // For PACKAGE
   sessionsIncluded    Int?
-  packageValidityDays Int?   // e.g. must use within 56 days (8 weeks)
+  packageValidityDays Int? // e.g. must use within 56 days (8 weeks)
 
   // For COURSE
   weeksCount        Int?
   sessionsPerWeek   Int?
   groupSize         TrainerGroupSize?
   curriculum        String?
-  startDate         DateTime? @db.Date
-  ongoingEnrollment Boolean   @default(false)
+  startDate         DateTime?         @db.Date
+  ongoingEnrollment Boolean           @default(false)
 
   // What's included / what parent receives
   includedDetails String?
@@ -1013,13 +1057,13 @@ model TrainerOffering {
 }
 
 model TrainerAvailabilityTemplate {
-  id          String         @id @default(uuid())
-  trainerId   String
-  trainer     TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
-  dayOfWeek   Int            // 0=Sun, 6=Sat
-  startTime   String         // "09:00"
-  endTime     String         // "18:00"
-  createdAt   DateTime       @default(now())
+  id        String         @id @default(uuid())
+  trainerId String
+  trainer   TrainerProfile @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+  dayOfWeek Int // 0=Sun, 6=Sat
+  startTime String // "09:00"
+  endTime   String // "18:00"
+  createdAt DateTime       @default(now())
 
   @@index([trainerId])
   @@map("trainer_availability_templates")
@@ -1030,64 +1074,64 @@ model TrainerAvailabilityTemplate {
 // ============================================================
 
 model KennelProfile {
-  id                    String    @id @default(cuid())
-  businessProfileId     String    @unique
-  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+  id                String          @id @default(cuid())
+  businessProfileId String          @unique
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
   // Facility
-  totalUnits            Int
-  facilityType          KennelFacilityType @default(STANDARD)
-  acceptsCats           Boolean   @default(false)
-  acceptsDogs           Boolean   @default(true)
-  acceptsOtherPets      Boolean   @default(false)
-  maxPetWeightKg        Int?      // per-unit weight limit
+  totalUnits       Int
+  facilityType     KennelFacilityType @default(STANDARD)
+  acceptsCats      Boolean            @default(false)
+  acceptsDogs      Boolean            @default(true)
+  acceptsOtherPets Boolean            @default(false)
+  maxPetWeightKg   Int? // per-unit weight limit
 
   // Services
-  providesFood          Boolean   @default(false)  // else parent brings food
-  providesBedding       Boolean   @default(true)
-  providesPlayArea      Boolean   @default(false)
-  playAreaHoursPerDay   Int?
-  walksPerDay           Int       @default(2)
-  photoUpdatesPerDay    Int       @default(1)
-  airConditioned        Boolean   @default(true)
-  heated                Boolean   @default(true)
-  securityMonitored     Boolean   @default(true)
+  providesFood        Boolean @default(false) // else parent brings food
+  providesBedding     Boolean @default(true)
+  providesPlayArea    Boolean @default(false)
+  playAreaHoursPerDay Int?
+  walksPerDay         Int     @default(2)
+  photoUpdatesPerDay  Int     @default(1)
+  airConditioned      Boolean @default(true)
+  heated              Boolean @default(true)
+  securityMonitored   Boolean @default(true)
 
   // Operating hours for pickup/drop-off
-  pickupDropoffJson     Json      // { mon: {open: "08:00", close: "20:00"}, ... }
+  pickupDropoffJson Json // { mon: {open: "08:00", close: "20:00"}, ... }
 
   // Pricing
-  pricePerNightEgp      Int
-  pricePerNightLongStayEgp  Int?  // for 7+ nights, discounted rate
-  longStayThresholdNights   Int   @default(7)
+  pricePerNightEgp         Int
+  pricePerNightLongStayEgp Int? // for 7+ nights, discounted rate
+  longStayThresholdNights  Int  @default(7)
 
   // Requirements (intake checklist)
-  requiresVaccinationProof    Boolean   @default(true)
-  requiresDewormingProof      Boolean   @default(true)
-  requiresHealthCertificate   Boolean   @default(false)
-  requiredVaccines            String[]  @default(["rabies", "DHPP", "bordetella"])  // for dogs
-  requiredCatVaccines         String[]  @default(["FVRCP", "rabies"])
+  requiresVaccinationProof  Boolean  @default(true)
+  requiresDewormingProof    Boolean  @default(true)
+  requiresHealthCertificate Boolean  @default(false)
+  requiredVaccines          String[] @default(["rabies", "DHPP", "bordetella"]) // for dogs
+  requiredCatVaccines       String[] @default(["FVRCP", "rabies"])
 
   // Legal
-  liabilityWaiverText         String   @db.Text  // editable per-kennel, defaults to template
-  liabilityWaiverVersion      Int      @default(1)
+  liabilityWaiverText    String @db.Text // editable per-kennel, defaults to template
+  liabilityWaiverVersion Int    @default(1)
 
   // Status
-  status                KennelStatus @default(PENDING_DOCS)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  status    KennelStatus @default(PENDING_DOCS)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 
-  units                 KennelUnit[]
-  stays                 KennelStay[]
+  units KennelUnit[]
+  stays KennelStay[]
 
   @@index([status])
   @@map("kennel_profiles")
 }
 
 enum KennelFacilityType {
-  STANDARD      // basic cages
-  LUXURY        // larger runs, outdoor access
-  MEDICAL       // for pets with medical needs
+  STANDARD // basic cages
+  LUXURY // larger runs, outdoor access
+  MEDICAL // for pets with medical needs
   SMALL_DOG_ONLY
   LARGE_DOG_ONLY
 }
@@ -1102,78 +1146,78 @@ enum KennelStatus {
 }
 
 model KennelUnit {
-  id              String    @id @default(cuid())
+  id              String        @id @default(cuid())
   kennelProfileId String
   kennelProfile   KennelProfile @relation(fields: [kennelProfileId], references: [id])
 
-  unitNumber      String    // "A-1", "A-2", or whatever numbering kennel uses
-  unitType        String    // "STANDARD", "DELUXE", "MEDICAL", etc.
+  unitNumber       String // "A-1", "A-2", or whatever numbering kennel uses
+  unitType         String // "STANDARD", "DELUXE", "MEDICAL", etc.
   sizeSquareMeters Decimal? @db.Decimal(6, 2)
   hasOutdoorAccess Boolean  @default(false)
-  suitableForSize String[]  @default(["SMALL", "MEDIUM"])  // dog size
-  maxOccupancy    Int       @default(1)  // sometimes 2 pets share
+  suitableForSize  String[] @default(["SMALL", "MEDIUM"]) // dog size
+  maxOccupancy     Int      @default(1) // sometimes 2 pets share
 
-  photosUrls      String[]  @default([])
-  notes           String?   @db.Text
+  photosUrls String[] @default([])
+  notes      String?  @db.Text
 
-  isActive        Boolean   @default(true)
-  inMaintenanceUntil  DateTime?
+  isActive           Boolean   @default(true)
+  inMaintenanceUntil DateTime?
 
-  stays           KennelStay[]
+  stays KennelStay[]
 
-  @@index([kennelProfileId])
   @@unique([kennelProfileId, unitNumber])
+  @@index([kennelProfileId])
   @@map("kennel_units")
 }
 
 model KennelStay {
-  id                  String    @id @default(cuid())
-  bookingId           String    @unique
-  booking             Booking   @relation(fields: [bookingId], references: [id])
-  kennelProfileId     String
-  kennelProfile       KennelProfile @relation(fields: [kennelProfileId], references: [id])
-  kennelUnitId        String?
-  kennelUnit          KennelUnit? @relation(fields: [kennelUnitId], references: [id])
+  id              String        @id @default(cuid())
+  bookingId       String        @unique
+  booking         Booking       @relation(fields: [bookingId], references: [id])
+  kennelProfileId String
+  kennelProfile   KennelProfile @relation(fields: [kennelProfileId], references: [id])
+  kennelUnitId    String?
+  kennelUnit      KennelUnit?   @relation(fields: [kennelUnitId], references: [id])
 
   // Timing
-  checkInAt           DateTime
-  expectedCheckOutAt  DateTime
-  actualCheckInAt     DateTime?
-  actualCheckOutAt    DateTime?
+  checkInAt          DateTime
+  expectedCheckOutAt DateTime
+  actualCheckInAt    DateTime?
+  actualCheckOutAt   DateTime?
 
   // Intake
-  intakePhotos        String[]  @default([])  // Cloudinary URLs
-  intakeWeight        Decimal?  @db.Decimal(5, 2)
-  intakeNotes         String?   @db.Text
-  intakeDoneBy        String?   // team member userId
-  intakeDoneAt        DateTime?
+  intakePhotos String[]  @default([]) // Cloudinary URLs
+  intakeWeight Decimal?  @db.Decimal(5, 2)
+  intakeNotes  String?   @db.Text
+  intakeDoneBy String? // team member userId
+  intakeDoneAt DateTime?
 
   // Documents at intake
-  vaccinationDocsUrls String[]  @default([])
-  dewormingDocsUrls   String[]  @default([])
-  healthCertUrls      String[]  @default([])
-  liabilityWaiverSignedAt  DateTime?
-  liabilityWaiverVersion   Int?
-  liabilityWaiverSignatureUrl  String?  // signed waiver PDF Cloudinary URL
+  vaccinationDocsUrls         String[]  @default([])
+  dewormingDocsUrls           String[]  @default([])
+  healthCertUrls              String[]  @default([])
+  liabilityWaiverSignedAt     DateTime?
+  liabilityWaiverVersion      Int?
+  liabilityWaiverSignatureUrl String? // signed waiver PDF Cloudinary URL
 
   // Parent-provided food/meds
-  foodProvidedByParent Boolean  @default(false)
-  medicationsJson      Json?    // array of {name, schedule, dose, notes}
+  foodProvidedByParent Boolean @default(false)
+  medicationsJson      Json? // array of {name, schedule, dose, notes}
 
   // Daily logs
-  dailyUpdatesJson     Json?    // per-day: {date, mood, appetite, exerciseMinutes, notes, photoUrls}
+  dailyUpdatesJson Json? // per-day: {date, mood, appetite, exerciseMinutes, notes, photoUrls}
 
   // Discharge
-  dischargePhotos      String[]  @default([])
-  dischargeWeight      Decimal?  @db.Decimal(5, 2)
-  dischargeNotes       String?   @db.Text
-  dischargeDoneBy      String?
-  dischargeDoneAt      DateTime?
+  dischargePhotos String[]  @default([])
+  dischargeWeight Decimal?  @db.Decimal(5, 2)
+  dischargeNotes  String?   @db.Text
+  dischargeDoneBy String?
+  dischargeDoneAt DateTime?
 
-  status               KennelStayStatus @default(CONFIRMED)
+  status KennelStayStatus @default(CONFIRMED)
 
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([kennelProfileId, status])
   @@index([checkInAt])
@@ -1187,7 +1231,7 @@ enum KennelStayStatus {
   READY_FOR_DISCHARGE
   DISCHARGED
   CANCELLED
-  MEDICAL_HOLD  // kennel keeping pet longer for medical reason
+  MEDICAL_HOLD // kennel keeping pet longer for medical reason
 }
 
 // ============================================================
@@ -1195,47 +1239,47 @@ enum KennelStayStatus {
 // ============================================================
 
 model PetHotelProfile {
-  id                    String    @id @default(cuid())
-  businessProfileId     String    @unique
-  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+  id                String          @id @default(cuid())
+  businessProfileId String          @unique
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
-  hotelName             String?
-  starRating            Int?
+  hotelName  String?
+  starRating Int?
 
-  acceptsDogs           Boolean   @default(true)
-  acceptsCats           Boolean   @default(false)
-  acceptsOther          Boolean   @default(false)
-  maxPetsPerRoom        Int       @default(1)
-  hasPool               Boolean   @default(false)
-  hasGroomingSpa        Boolean   @default(false)
-  hasOnCallVet          Boolean   @default(false)
-  hasTrainingProgram    Boolean   @default(false)
-  hasLiveCameraAccess   Boolean   @default(false)
+  acceptsDogs             Boolean @default(true)
+  acceptsCats             Boolean @default(false)
+  acceptsOther            Boolean @default(false)
+  maxPetsPerRoom          Int     @default(1)
+  hasPool                 Boolean @default(false)
+  hasGroomingSpa          Boolean @default(false)
+  hasOnCallVet            Boolean @default(false)
+  hasTrainingProgram      Boolean @default(false)
+  hasLiveCameraAccess     Boolean @default(false)
   hasPickupDropoffService Boolean @default(false)
-  pickupRadiusKm        Int?
-  pickupCostEgp         Int?
+  pickupRadiusKm          Int?
+  pickupCostEgp           Int?
 
-  checkInWindowJson     Json
-  checkOutWindowJson    Json
+  checkInWindowJson  Json
+  checkOutWindowJson Json
 
-  requiresVaccinationProof    Boolean @default(true)
-  requiredVaccines            String[] @default(["rabies", "DHPP"])
+  requiresVaccinationProof Boolean  @default(true)
+  requiredVaccines         String[] @default(["rabies", "DHPP"])
 
-  requiresDeposit       Boolean   @default(true)
-  depositPercentage     Int       @default(25)
-  depositRefundWindowHours Int    @default(72)
+  requiresDeposit          Boolean @default(true)
+  depositPercentage        Int     @default(25)
+  depositRefundWindowHours Int     @default(72)
 
-  status                PetHotelStatus @default(PENDING_DOCS)
-  liabilityWaiverText   String?   @db.Text
-  liabilityWaiverVersion Int      @default(1)
+  status                 PetHotelStatus @default(PENDING_DOCS)
+  liabilityWaiverText    String?        @db.Text
+  liabilityWaiverVersion Int            @default(1)
 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  roomTypes             PetHotelRoomType[]
-  rooms                 PetHotelRoom[]
-  stays                 PetHotelStay[]
-  packages              PetHotelPackage[]
+  roomTypes PetHotelRoomType[]
+  rooms     PetHotelRoom[]
+  stays     PetHotelStay[]
+  packages  PetHotelPackage[]
 
   @@index([status])
   @@map("pethotel_profiles")
@@ -1251,28 +1295,28 @@ enum PetHotelStatus {
 }
 
 model PetHotelRoomType {
-  id                  String    @id @default(cuid())
-  petHotelProfileId   String
-  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+  id                String          @id @default(cuid())
+  petHotelProfileId String
+  petHotelProfile   PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
 
-  name                String
-  tier                RoomTier
-  description         String?   @db.Text
-  squareMeters        Decimal?  @db.Decimal(6, 2)
-  maxPetWeightKg      Int?
-  suitableSizes       String[]  @default(["SMALL", "MEDIUM", "LARGE"])
+  name           String
+  tier           RoomTier
+  description    String?  @db.Text
+  squareMeters   Decimal? @db.Decimal(6, 2)
+  maxPetWeightKg Int?
+  suitableSizes  String[] @default(["SMALL", "MEDIUM", "LARGE"])
 
-  amenities           String[]  @default([])
+  amenities String[] @default([])
 
-  pricePerNightEgp    Int
-  longStayNights      Int       @default(7)
+  pricePerNightEgp         Int
+  longStayNights           Int  @default(7)
   longStayPricePerNightEgp Int?
 
-  photosUrls          String[]  @default([])
+  photosUrls String[] @default([])
 
-  isActive            Boolean   @default(true)
+  isActive Boolean @default(true)
 
-  rooms               PetHotelRoom[]
+  rooms PetHotelRoom[]
 
   @@index([petHotelProfileId])
   @@map("pethotel_room_types")
@@ -1286,20 +1330,20 @@ enum RoomTier {
 }
 
 model PetHotelRoom {
-  id                  String    @id @default(cuid())
-  petHotelProfileId   String
-  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
-  roomTypeId          String
-  roomType            PetHotelRoomType @relation(fields: [roomTypeId], references: [id])
+  id                String           @id @default(cuid())
+  petHotelProfileId String
+  petHotelProfile   PetHotelProfile  @relation(fields: [petHotelProfileId], references: [id])
+  roomTypeId        String
+  roomType          PetHotelRoomType @relation(fields: [roomTypeId], references: [id])
 
-  roomNumber          String
-  floor               Int?
-  cameraStreamUrl     String?
-  notes               String?   @db.Text
-  isActive            Boolean   @default(true)
-  inMaintenanceUntil  DateTime?
+  roomNumber         String
+  floor              Int?
+  cameraStreamUrl    String?
+  notes              String?   @db.Text
+  isActive           Boolean   @default(true)
+  inMaintenanceUntil DateTime?
 
-  stays               PetHotelStay[]
+  stays PetHotelStay[]
 
   @@unique([petHotelProfileId, roomNumber])
   @@index([petHotelProfileId])
@@ -1307,85 +1351,85 @@ model PetHotelRoom {
 }
 
 model PetHotelPackage {
-  id                  String    @id @default(cuid())
-  petHotelProfileId   String
-  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+  id                String          @id @default(cuid())
+  petHotelProfileId String
+  petHotelProfile   PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
 
-  name                String
-  description         String?   @db.Text
-  durationNights      Int
-  eligibleRoomTiers   RoomTier[]
+  name              String
+  description       String?    @db.Text
+  durationNights    Int
+  eligibleRoomTiers RoomTier[]
 
-  includesGrooming    Boolean   @default(false)
+  includesGrooming      Boolean @default(false)
   groomingSessionsCount Int     @default(0)
-  includesTraining    Boolean   @default(false)
+  includesTraining      Boolean @default(false)
   trainingSessionsCount Int     @default(0)
-  includesVetCheckup  Boolean   @default(false)
-  includesPhotoshoot  Boolean   @default(false)
-  includesTransport   Boolean   @default(false)
+  includesVetCheckup    Boolean @default(false)
+  includesPhotoshoot    Boolean @default(false)
+  includesTransport     Boolean @default(false)
 
-  totalPriceEgp       Int
-  savingsVsAlaCarte   Int?
+  totalPriceEgp     Int
+  savingsVsAlaCarte Int?
 
-  isActive            Boolean   @default(true)
-  createdAt           DateTime  @default(now())
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
 
-  stays               PetHotelStay[]
+  stays PetHotelStay[]
 
   @@index([petHotelProfileId])
   @@map("pethotel_packages")
 }
 
 model PetHotelStay {
-  id                    String    @id @default(cuid())
-  bookingId             String    @unique
-  booking               Booking   @relation(fields: [bookingId], references: [id])
-  petHotelProfileId     String
-  petHotelProfile       PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
-  petHotelRoomId        String?
-  petHotelRoom          PetHotelRoom? @relation(fields: [petHotelRoomId], references: [id])
-  packageId             String?
-  package               PetHotelPackage? @relation(fields: [packageId], references: [id])
+  id                String           @id @default(cuid())
+  bookingId         String           @unique
+  booking           Booking          @relation(fields: [bookingId], references: [id])
+  petHotelProfileId String
+  petHotelProfile   PetHotelProfile  @relation(fields: [petHotelProfileId], references: [id])
+  petHotelRoomId    String?
+  petHotelRoom      PetHotelRoom?    @relation(fields: [petHotelRoomId], references: [id])
+  packageId         String?
+  package           PetHotelPackage? @relation(fields: [packageId], references: [id])
 
-  checkInDate           DateTime
-  checkOutDate          DateTime
-  actualCheckInAt       DateTime?
-  actualCheckOutAt      DateTime?
+  checkInDate      DateTime
+  checkOutDate     DateTime
+  actualCheckInAt  DateTime?
+  actualCheckOutAt DateTime?
 
-  depositAmountEgp      Int
-  depositPaidAt         DateTime?
-  balanceAmountEgp      Int
-  balancePaidAt         DateTime?
+  depositAmountEgp Int
+  depositPaidAt    DateTime?
+  balanceAmountEgp Int
+  balancePaidAt    DateTime?
 
-  intakePhotos          String[]  @default([])
-  intakeWeight          Decimal?  @db.Decimal(5, 2)
-  intakeNotes           String?   @db.Text
-  vaccinationDocsUrls   String[]  @default([])
-  liabilityWaiverSignedAt DateTime?
-  liabilityWaiverVersion Int?
+  intakePhotos                String[]  @default([])
+  intakeWeight                Decimal?  @db.Decimal(5, 2)
+  intakeNotes                 String?   @db.Text
+  vaccinationDocsUrls         String[]  @default([])
+  liabilityWaiverSignedAt     DateTime?
+  liabilityWaiverVersion      Int?
   liabilityWaiverSignatureUrl String?
 
-  dailyUpdatesJson      Json?
+  dailyUpdatesJson Json?
 
-  groomingSessionsDone  Int       @default(0)
-  trainingSessionsDone  Int       @default(0)
-  vetCheckupDone        Boolean   @default(false)
+  groomingSessionsDone Int     @default(0)
+  trainingSessionsDone Int     @default(0)
+  vetCheckupDone       Boolean @default(false)
 
-  liveCameraEnabled     Boolean   @default(false)
-  cameraStreamUrl       String?
+  liveCameraEnabled Boolean @default(false)
+  cameraStreamUrl   String?
 
-  foodInstructions      String?   @db.Text
-  medicationsJson       Json?
-  specialRequests       String?   @db.Text
+  foodInstructions String? @db.Text
+  medicationsJson  Json?
+  specialRequests  String? @db.Text
 
-  dischargePhotos       String[]  @default([])
-  dischargeWeight       Decimal?  @db.Decimal(5, 2)
-  dischargeNotes        String?   @db.Text
+  dischargePhotos String[] @default([])
+  dischargeWeight Decimal? @db.Decimal(5, 2)
+  dischargeNotes  String?  @db.Text
 
-  status                PetHotelStayStatus @default(DEPOSIT_PAID)
+  status PetHotelStayStatus @default(DEPOSIT_PAID)
 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([petHotelProfileId, status])
   @@index([checkInDate])
@@ -1408,34 +1452,34 @@ enum PetHotelStayStatus {
 // ============================================================
 
 model Pet {
-  id            String         @id @default(uuid())
-  ownerId       String
-  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  name          String
-  species       Species
-  breed         String?
-  nickname      String?
-  ageCategory   AgeCategory?
-  neuteredStatus NeuteredStatus @default(unknown)
-  houseTrained  HouseTrainedStatus @default(yes)
-  color         String?
-  dateOfBirth   DateTime?      @db.Date
-  weightKg      Decimal?       @db.Decimal(5, 2)
+  id             String             @id @default(uuid())
+  ownerId        String
+  owner          User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name           String
+  species        Species
+  breed          String?
+  nickname       String?
+  ageCategory    AgeCategory?
+  neuteredStatus NeuteredStatus     @default(unknown)
+  houseTrained   HouseTrainedStatus @default(yes)
+  color          String?
+  dateOfBirth    DateTime?          @db.Date
+  weightKg       Decimal?           @db.Decimal(5, 2)
   weightCategory WeightCategory?
-  gender        PetGender      @default(unknown)
-  isNeutered    Boolean        @default(false)
+  gender         PetGender          @default(unknown)
+  isNeutered     Boolean            @default(false)
 
   // Microchip
-  hasMicrochip  Boolean  @default(false)
-  microchipId   String?
+  hasMicrochip Boolean @default(false)
+  microchipId  String?
 
   // Photos — min 2, max 6 required by UI
-  profilePhoto  String?
-  photos        String[]
+  profilePhoto String?
+  photos       String[]
 
   // Vaccination certificate
-  vaccinationCertPhoto String?   // uploaded document/photo URL
-  vaccinationVerified  Boolean   @default(false) // set by admin after review
+  vaccinationCertPhoto String? // uploaded document/photo URL
+  vaccinationVerified  Boolean @default(false) // set by admin after review
 
   // Special needs
   medicalConditions String? // free text
@@ -1450,20 +1494,20 @@ model Pet {
   // Temperament (JSON)
   temperament Json @default("{}") // { goodWithDogs, goodWithCats, goodWithChildren, isAnxious, aggressiveTendencies, notes }
 
-  isActive      Boolean        @default(true)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  medicalInfo   PetMedicalInfo?
-  vaccinations  PetVaccination[]
-  medications   PetMedication[]
-  behavior      PetBehavior?
-  schedules     PetSchedule[]
-  bookingPets   BookingPet[]
-  petReviews    PetReview[]
-  bookingTasks  BookingTask[]
-  careLogs      CareLog[]
+  medicalInfo  PetMedicalInfo?
+  vaccinations PetVaccination[]
+  medications  PetMedication[]
+  behavior     PetBehavior?
+  schedules    PetSchedule[]
+  bookingPets  BookingPet[]
+  petReviews   PetReview[]
+  bookingTasks BookingTask[]
+  careLogs     CareLog[]
 
   @@index([ownerId])
   @@map("pets")
@@ -1490,16 +1534,16 @@ model PetMedicalInfo {
 }
 
 model PetVaccination {
-  id               String   @id @default(uuid())
+  id               String    @id @default(uuid())
   petId            String
-  pet              Pet      @relation(fields: [petId], references: [id], onDelete: Cascade)
+  pet              Pet       @relation(fields: [petId], references: [id], onDelete: Cascade)
   vaccineName      String
-  administeredDate DateTime @db.Date
+  administeredDate DateTime  @db.Date
   expiryDate       DateTime? @db.Date
   documentUrl      String?
   notes            String?
   createdById      String?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime  @default(now())
 
   @@index([petId])
   @@index([expiryDate])
@@ -1515,7 +1559,7 @@ model PetMedication {
   dosage         String?
   unit           String?
   frequency      MedicationFrequency
-  adminTimes     String[]            // ["08:00", "20:00"]
+  adminTimes     String[] // ["08:00", "20:00"]
   startDate      DateTime?           @db.Date
   endDate        DateTime?           @db.Date
   notes          String?
@@ -1527,18 +1571,18 @@ model PetMedication {
 }
 
 model PetBehavior {
-  id               String                @id @default(uuid())
-  petId            String                @unique
-  pet              Pet                   @relation(fields: [petId], references: [id], onDelete: Cascade)
-  temperamentTags  String[]
-  goodWithDogs     BehaviorCompatibility @default(yes)
-  goodWithCats     BehaviorCompatibility @default(yes)
-  goodWithKids     BehaviorCompatibility @default(yes)
-  trainingLevel    TrainingLevel         @default(none)
-  energyLevel      EnergyLevel           @default(medium)
-  behaviorNotes    String?
-  fearTriggers     String[]
-  updatedAt        DateTime              @updatedAt
+  id              String                @id @default(uuid())
+  petId           String                @unique
+  pet             Pet                   @relation(fields: [petId], references: [id], onDelete: Cascade)
+  temperamentTags String[]
+  goodWithDogs    BehaviorCompatibility @default(yes)
+  goodWithCats    BehaviorCompatibility @default(yes)
+  goodWithKids    BehaviorCompatibility @default(yes)
+  trainingLevel   TrainingLevel         @default(none)
+  energyLevel     EnergyLevel           @default(medium)
+  behaviorNotes   String?
+  fearTriggers    String[]
+  updatedAt       DateTime              @updatedAt
 
   @@map("pet_behavior")
 }
@@ -1548,7 +1592,7 @@ model PetSchedule {
   petId           String
   pet             Pet          @relation(fields: [petId], references: [id], onDelete: Cascade)
   scheduleType    ScheduleType
-  scheduledTime   String       // "08:00"
+  scheduledTime   String // "08:00"
   durationMinutes Int?
   foodType        String?
   foodAmount      String?
@@ -1584,28 +1628,28 @@ model CareLog {
 // ============================================================
 
 model Booking {
-  id           String @id @default(uuid())
-  parentId     String                                    // was: ownerId
-  parent       User   @relation("BookingParent", fields: [parentId], references: [id])
-  petFriendId  String?                                   // null for Kennel/Trainer/PetHotel
-  petFriend    User?  @relation("BookingPetFriend", fields: [petFriendId], references: [id])
+  id          String  @id @default(uuid())
+  parentId    String // was: ownerId
+  parent      User    @relation("BookingParent", fields: [parentId], references: [id])
+  petFriendId String? // null for Kennel/Trainer/PetHotel
+  petFriend   User?   @relation("BookingPetFriend", fields: [petFriendId], references: [id])
 
   // Provider references (only one will be set based on serviceType)
-  trainerProfileId  String?
-  trainerProfile    TrainerProfile? @relation("TrainerBookings", fields: [trainerProfileId], references: [id])
-  trainerId    String?
-  kennelId     String?
-  petHotelId   String?
+  trainerProfileId String?
+  trainerProfile   TrainerProfile? @relation("TrainerBookings", fields: [trainerProfileId], references: [id])
+  trainerId        String?
+  kennelId         String?
+  petHotelId       String?
 
   // Trainer session/program tracking
-  sessionPackageId   String?   // for multi-session bookings
-  sessionsCompleted  Int       @default(0)
-  sessionsTotal      Int?      // for packages/programs
-  trainerNotes       Json?     // [{sessionNum, date, notes, homework}]
+  sessionPackageId  String? // for multi-session bookings
+  sessionsCompleted Int     @default(0)
+  sessionsTotal     Int? // for packages/programs
+  trainerNotes      Json? // [{sessionNum, date, notes, homework}]
 
-  bookingType  BookingType
-  serviceType  ServiceType
-  status       BookingStatus @default(pending)
+  bookingType BookingType
+  serviceType ServiceType
+  status      BookingStatus @default(pending)
 
   // Timing
   requestedStart DateTime
@@ -1615,8 +1659,8 @@ model Booking {
 
   // Location
   serviceLocationType ServiceLocationType
-  serviceLat          Decimal?             @db.Decimal(10, 8)
-  serviceLng          Decimal?             @db.Decimal(11, 8)
+  serviceLat          Decimal?            @db.Decimal(10, 8)
+  serviceLng          Decimal?            @db.Decimal(11, 8)
   serviceAddress      String?
 
   // Pricing
@@ -1624,7 +1668,7 @@ model Booking {
   commissionRate   Decimal @default(15.00) @db.Decimal(5, 2)
   commissionAmount Decimal @db.Decimal(10, 2)
   totalPrice       Decimal @db.Decimal(10, 2)
-  providerPayout   Decimal @db.Decimal(10, 2)  // was: sitterPayout
+  providerPayout   Decimal @db.Decimal(10, 2) // was: sitterPayout
   currency         String  @default("EGP")
 
   // Overtime (PetFriend bookings)
@@ -1643,7 +1687,7 @@ model Booking {
 
   // Cancellation
   cancelledById      String?
-  cancelledBy        User?            @relation("CancelledBy", fields: [cancelledById], references: [id])
+  cancelledBy        User?             @relation("CancelledBy", fields: [cancelledById], references: [id])
   cancelledAt        DateTime?
   cancellationReason String?
   cancellationType   CancellationType?
@@ -1654,38 +1698,38 @@ model Booking {
 
   // Instructions
   specialInstructions String?
-  parentNotes         String?  // was: ownerNotes
+  parentNotes         String? // was: ownerNotes
 
   // Pet snapshot (frozen at booking time)
   petSnapshot Json? // Array of pet summaries
 
   // Review
-  parentReviewed    Boolean  @default(false)  // was: ownerReviewed
-  providerReviewed  Boolean  @default(false)  // was: sitterReviewed
-  reviewDeadline    DateTime?
+  parentReviewed   Boolean   @default(false) // was: ownerReviewed
+  providerReviewed Boolean   @default(false) // was: sitterReviewed
+  reviewDeadline   DateTime?
 
   // Routing
-  routingAttempt Int    @default(1)
-  routingHistory Json   @default("[]")
+  routingAttempt Int  @default(1)
+  routingHistory Json @default("[]")
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   // Relations
-  pets              BookingPet[]
-  extensions        BookingExtension[]
-  dispute           BookingDispute?
-  tasks             BookingTask[]
-  walkSessions      WalkSession[]
-  reviews           Review[]
-  transactions      PaymentTransaction[]
-  payouts           PetFriendPayout[]
-  careLogs          CareLog[]
-  overtimeLog       OvertimeLog?
-  endCode           BookingEndCode?      // 4-digit service end code
-  kennelStay        KennelStay?          // Prompt 12: kennel boarding stay
-  petHotelStay        PetHotelStay?        // Prompt 13: pet hotel stay
+  pets         BookingPet[]
+  extensions   BookingExtension[]
+  dispute      BookingDispute?
+  tasks        BookingTask[]
+  walkSessions WalkSession[]
+  reviews      Review[]
+  transactions PaymentTransaction[]
+  payouts      PetFriendPayout[]
+  careLogs     CareLog[]
+  overtimeLog  OvertimeLog?
+  endCode      BookingEndCode? // 4-digit service end code
+  kennelStay   KennelStay? // Prompt 12: kennel boarding stay
+  petHotelStay PetHotelStay? // Prompt 13: pet hotel stay
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -1699,13 +1743,13 @@ model Booking {
 
 // 4-digit service end code — shown only to Parent, entered by PetFriend to end service
 model BookingEndCode {
-  id        String   @id @default(uuid())
-  bookingId String   @unique
-  booking   Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  code      String   // 4-digit string e.g. "4821"
-  isUsed    Boolean  @default(false)
+  id        String    @id @default(uuid())
+  bookingId String    @unique
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  code      String // 4-digit string e.g. "4821"
+  isUsed    Boolean   @default(false)
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@map("booking_end_codes")
 }
@@ -1737,22 +1781,22 @@ model BookingExtension {
 }
 
 model BookingDispute {
-  id              String            @id @default(uuid())
-  bookingId       String            @unique
-  booking         Booking           @relation(fields: [bookingId], references: [id])
+  id              String             @id @default(uuid())
+  bookingId       String             @unique
+  booking         Booking            @relation(fields: [bookingId], references: [id])
   openedById      String
   reasonCategory  DisputeCategory
   description     String
   evidenceUrls    String[]
-  status          DisputeStatus     @default(open)
+  status          DisputeStatus      @default(open)
   resolution      DisputeResolution?
   resolutionNotes String?
   resolvedById    String?
   resolvedAt      DateTime?
   appealDeadline  DateTime?
-  parentAmount    Decimal?          @db.Decimal(10, 2)  // was: ownerAmount
-  providerAmount  Decimal?          @db.Decimal(10, 2)  // was: sitterAmount
-  createdAt       DateTime          @default(now())
+  parentAmount    Decimal?           @db.Decimal(10, 2) // was: ownerAmount
+  providerAmount  Decimal?           @db.Decimal(10, 2) // was: sitterAmount
+  createdAt       DateTime           @default(now())
 
   @@index([status, createdAt])
   @@map("booking_disputes")
@@ -1763,22 +1807,22 @@ model BookingDispute {
 // ============================================================
 
 model BookingTask {
-  id            String     @id @default(uuid())
-  bookingId     String
-  booking       Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  petId         String?
-  pet           Pet?       @relation(fields: [petId], references: [id])
-  taskType      TaskType
-  taskName      String
-  scheduledAt   DateTime
-  dueBy         DateTime
-  completedAt   DateTime?
-  completedById String?
-  photoUrl      String?
-  notes         String?
-  status        TaskStatus @default(pending)
-  alertSentToParent Boolean @default(false)  // was: alertSentOwner
-  createdAt     DateTime   @default(now())
+  id                String     @id @default(uuid())
+  bookingId         String
+  booking           Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  petId             String?
+  pet               Pet?       @relation(fields: [petId], references: [id])
+  taskType          TaskType
+  taskName          String
+  scheduledAt       DateTime
+  dueBy             DateTime
+  completedAt       DateTime?
+  completedById     String?
+  photoUrl          String?
+  notes             String?
+  status            TaskStatus @default(pending)
+  alertSentToParent Boolean    @default(false) // was: alertSentOwner
+  createdAt         DateTime   @default(now())
 
   walkSession WalkSession?
 
@@ -1794,7 +1838,7 @@ model WalkSession {
   bookingId       String
   booking         Booking     @relation(fields: [bookingId], references: [id])
   petIds          String[]
-  petFriendId     String      // was: sitterId
+  petFriendId     String // was: sitterId
   startTime       DateTime
   endTime         DateTime?
   totalDistanceM  Int         @default(0)
@@ -1857,35 +1901,35 @@ model PaymentTransaction {
 }
 
 model PetFriendPayout {
-  id             String               @id @default(uuid())
-  petFriendId    String               // User id — was: sitterId
-  petFriend      User                 @relation("UserPayouts", fields: [petFriendId], references: [id])
+  id                   String               @id @default(uuid())
+  petFriendId          String // User id — was: sitterId
+  petFriend            User                 @relation("UserPayouts", fields: [petFriendId], references: [id])
   // Link to PetFriendProfile for new payout flows
-  petFriendProfileId  String?
-  petFriendProfile    PetFriendProfile? @relation("ProfilePayouts", fields: [petFriendProfileId], references: [id])
-  bookingId      String?
-  booking        Booking?             @relation(fields: [bookingId], references: [id])
-  amount         Decimal              @db.Decimal(10, 2)
-  payoutMethod   ProviderPayoutMethod
-  destination    String?
-  status         PayoutStatus         @default(pending)
+  petFriendProfileId   String?
+  petFriendProfile     PetFriendProfile?    @relation("ProfilePayouts", fields: [petFriendProfileId], references: [id])
+  bookingId            String?
+  booking              Booking?             @relation(fields: [bookingId], references: [id])
+  amount               Decimal              @db.Decimal(10, 2)
+  payoutMethod         ProviderPayoutMethod
+  destination          String?
+  status               PayoutStatus         @default(pending)
   // Enhanced payout tracking
-  type                  PayoutType    @default(SCHEDULED)
-  commissionEgp         Int           @default(0)
-  netEgp                Int           @default(0)
-  scheduledFor          DateTime?
-  requestedAt           DateTime?
-  completedAt           DateTime?
-  failedAt              DateTime?
-  bookingsCount         Int           @default(0)
-  bookingIds            String[]
-  instantCashoutFeeEgp  Int           @default(0)
-  gatewayRef     String?
-  scheduledAt    DateTime?
-  processedAt    DateTime?
-  failureReason  String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  type                 PayoutType           @default(SCHEDULED)
+  commissionEgp        Int                  @default(0)
+  netEgp               Int                  @default(0)
+  scheduledFor         DateTime?
+  requestedAt          DateTime?
+  completedAt          DateTime?
+  failedAt             DateTime?
+  bookingsCount        Int                  @default(0)
+  bookingIds           String[]
+  instantCashoutFeeEgp Int                  @default(0)
+  gatewayRef           String?
+  scheduledAt          DateTime?
+  processedAt          DateTime?
+  failureReason        String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
 
   @@index([petFriendId, status])
   @@index([petFriendProfileId, status])
@@ -1897,7 +1941,7 @@ model PetFriendPayout {
 
 model TrainerPayout {
   id                   String               @id @default(cuid())
-  trainerId            String               // TrainerProfile.id
+  trainerId            String // TrainerProfile.id
   trainerProfile       TrainerProfile       @relation(fields: [trainerId], references: [id])
   bookingId            String?
   amount               Decimal              @db.Decimal(10, 2)
@@ -1936,10 +1980,10 @@ model ProcessedWebhookEvent {
 
 model PricingBounds {
   id            String   @id @default(cuid())
-  serviceType   String   @unique  // "HOUR" | "DAY" | "NIGHT" | "WALK"
+  serviceType   String   @unique // "HOUR" | "DAY" | "NIGHT" | "WALK"
   minEgp        Int
-  defaultMaxEgp Int      // max for new providers
-  eliteMaxEgp   Int      // max for 4.5+ rating & 20+ bookings
+  defaultMaxEgp Int // max for new providers
+  eliteMaxEgp   Int // max for 4.5+ rating & 20+ bookings
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -1951,38 +1995,38 @@ model PricingBounds {
 // ============================================================
 
 model Review {
-  id           String      @id @default(uuid())
+  id           String       @id @default(uuid())
   bookingId    String
-  booking      Booking     @relation(fields: [bookingId], references: [id])
+  booking      Booking      @relation(fields: [bookingId], references: [id])
   reviewerId   String
-  reviewer     User        @relation("Reviewer", fields: [reviewerId], references: [id])
+  reviewer     User         @relation("Reviewer", fields: [reviewerId], references: [id])
   revieweeId   String
-  reviewee     User        @relation("Reviewee", fields: [revieweeId], references: [id])
+  reviewee     User         @relation("Reviewee", fields: [revieweeId], references: [id])
   revieweeType RevieweeType
 
-  overallRating        Decimal @db.Decimal(3, 2)
+  overallRating Decimal @db.Decimal(3, 2)
 
   // Parent reviewing PetFriend/provider
-  ratingCommunication  Decimal? @db.Decimal(3, 2)
-  ratingReliability    Decimal? @db.Decimal(3, 2)
-  ratingCareQuality    Decimal? @db.Decimal(3, 2)
-  ratingValue          Decimal? @db.Decimal(3, 2)
+  ratingCommunication Decimal? @db.Decimal(3, 2)
+  ratingReliability   Decimal? @db.Decimal(3, 2)
+  ratingCareQuality   Decimal? @db.Decimal(3, 2)
+  ratingValue         Decimal? @db.Decimal(3, 2)
 
   // PetFriend reviewing Parent
-  ratingPetBehavior    Decimal? @db.Decimal(3, 2)
-  ratingCleanliness    Decimal? @db.Decimal(3, 2)
+  ratingPetBehavior Decimal? @db.Decimal(3, 2)
+  ratingCleanliness Decimal? @db.Decimal(3, 2)
 
-  comment      String
-  wouldRebook  Boolean?
-  photos       String[]
+  comment     String
+  wouldRebook Boolean?
+  photos      String[]
 
-  isPublished  Boolean  @default(false)
-  isReported   Boolean  @default(false)
-  isModerated  Boolean  @default(false)
+  isPublished      Boolean           @default(false)
+  isReported       Boolean           @default(false)
+  isModerated      Boolean           @default(false)
   moderationAction ModerationAction?
   moderationNote   String?
 
-  submittedAt DateTime @default(now())
+  submittedAt DateTime  @default(now())
   publishedAt DateTime?
 
   @@index([revieweeId, revieweeType, isPublished])
@@ -1991,15 +2035,15 @@ model Review {
 }
 
 model PetReview {
-  id                        String   @id @default(uuid())
-  bookingId                 String
-  petFriendId               String   // was: sitterId
-  petId                     String
-  pet                       Pet      @relation(fields: [petId], references: [id])
-  behaviorRating            Int
-  behaviorNotes             String?
-  isVisibleToFuturePetFriends Boolean @default(true)  // was: isVisibleToFutureSitters
-  createdAt                 DateTime @default(now())
+  id                          String   @id @default(uuid())
+  bookingId                   String
+  petFriendId                 String // was: sitterId
+  petId                       String
+  pet                         Pet      @relation(fields: [petId], references: [id])
+  behaviorRating              Int
+  behaviorNotes               String?
+  isVisibleToFuturePetFriends Boolean  @default(true) // was: isVisibleToFutureSitters
+  createdAt                   DateTime @default(now())
 
   @@index([petId])
   @@map("pet_reviews")
@@ -2010,20 +2054,20 @@ model PetReview {
 // ============================================================
 
 model Notification {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type        String
-  title       String
-  body        String
-  data        Json     @default("{}")
-  targetRole  String   @default("ANY") // "PARENT" | "PETFRIEND" | "ANY"
-  deepLink    String?                  // e.g. "/booking/abc123"
-  isRead      Boolean  @default(false)
-  isPushSent  Boolean  @default(false)
-  isSmsSent   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  readAt      DateTime?
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       String
+  title      String
+  body       String
+  data       Json      @default("{}")
+  targetRole String    @default("ANY") // "PARENT" | "PETFRIEND" | "ANY"
+  deepLink   String? // e.g. "/booking/abc123"
+  isRead     Boolean   @default(false)
+  isPushSent Boolean   @default(false)
+  isSmsSent  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  readAt     DateTime?
 
   @@index([userId, isRead, createdAt(sort: Desc)])
   @@map("notifications")
@@ -2035,9 +2079,9 @@ model Notification {
 
 model Follow {
   followerId String
-  follower   User   @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  follower   User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
   followeeId String
-  followee   User   @relation("Followee", fields: [followeeId], references: [id], onDelete: Cascade)
+  followee   User     @relation("Followee", fields: [followeeId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
 
   @@id([followerId, followeeId])
@@ -2078,15 +2122,15 @@ model Place {
 }
 
 model PlaceReview {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   placeId   String
-  place     Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  place     Place     @relation(fields: [placeId], references: [id], onDelete: Cascade)
   userId    String
   rating    Int
   comment   String?
   photos    String[]
   visitDate DateTime? @db.Date
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@unique([placeId, userId])
   @@index([placeId])
@@ -2098,15 +2142,15 @@ model PlaceReview {
 // ============================================================
 
 model LoyaltyTransaction {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   action      String
   points      Int
   referenceId String?
   description String?
   expiresAt   DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("loyalty_transactions")
@@ -2117,22 +2161,22 @@ model LoyaltyTransaction {
 // ============================================================
 
 model Offer {
-  id            String      @id @default(uuid())
-  parentId      String                                    // was: ownerId
-  parent        User        @relation("OfferParent", fields: [parentId], references: [id])
-  petFriendId   String                                    // was: sitterId
-  petFriend     User        @relation("OfferPetFriend", fields: [petFriendId], references: [id])
-  service       ServiceType
-  parentPrice   Decimal     @db.Decimal(8, 2)             // was: ownerPrice
-  providerCounter Decimal?  @db.Decimal(8, 2)             // was: sitterCounter
-  finalPrice    Decimal?    @db.Decimal(8, 2)
-  status        OfferStatus @default(PENDING)
-  round         Int         @default(1)
-  expiresAt     DateTime
-  bookingId     String?
-  message       String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id              String      @id @default(uuid())
+  parentId        String // was: ownerId
+  parent          User        @relation("OfferParent", fields: [parentId], references: [id])
+  petFriendId     String // was: sitterId
+  petFriend       User        @relation("OfferPetFriend", fields: [petFriendId], references: [id])
+  service         ServiceType
+  parentPrice     Decimal     @db.Decimal(8, 2) // was: ownerPrice
+  providerCounter Decimal?    @db.Decimal(8, 2) // was: sitterCounter
+  finalPrice      Decimal?    @db.Decimal(8, 2)
+  status          OfferStatus @default(PENDING)
+  round           Int         @default(1)
+  expiresAt       DateTime
+  bookingId       String?
+  message         String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
 
   @@index([parentId])
   @@index([petFriendId])
@@ -2145,14 +2189,14 @@ model Offer {
 // ============================================================
 
 model AdminAction {
-  id          String   @id @default(uuid())
-  adminId     String
-  admin       User     @relation("AdminActor", fields: [adminId], references: [id])
-  actionType  String
-  targetType  String
-  targetId    String?
-  notes       String?
-  createdAt   DateTime @default(now())
+  id         String   @id @default(uuid())
+  adminId    String
+  admin      User     @relation("AdminActor", fields: [adminId], references: [id])
+  actionType String
+  targetType String
+  targetId   String?
+  notes      String?
+  createdAt  DateTime @default(now())
 
   @@index([adminId, createdAt(sort: Desc)])
   @@map("admin_actions")
@@ -2210,12 +2254,12 @@ model Product {
 
   name          String
   description   String?
-  price         Decimal  @db.Decimal(8, 2)
-  photos        String[] @default([])
+  price         Decimal      @db.Decimal(8, 2)
+  photos        String[]     @default([])
   ingredients   String?
   allergens     String?
-  stockQuantity Int      @default(0)
-  isAvailable   Boolean  @default(true)
+  stockQuantity Int          @default(0)
+  isAvailable   Boolean      @default(true)
   sellerType    ProviderType
 
   orderItems OrderItem[]
@@ -2240,8 +2284,8 @@ model Order {
   platformFee   Decimal     @db.Decimal(10, 2)
   sellerEarning Decimal     @db.Decimal(10, 2)
 
-  status          String       // OrderStatus enum values
-  deliveryType    String       // DELIVERY | PICKUP
+  status          String // OrderStatus enum values
+  deliveryType    String // DELIVERY | PICKUP
   deliveryAddress String?
   notes           String?
 
@@ -2270,17 +2314,17 @@ model OrderItem {
 // ============================================================
 
 model OvertimeLog {
-  id                 String        @id @default(uuid())
-  bookingId          String        @unique
-  booking            Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  id                 String         @id @default(uuid())
+  bookingId          String         @unique
+  booking            Booking        @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   startedAt          DateTime
   endedAt            DateTime?
-  totalMinutes       Int           @default(0)
-  totalCharge        Decimal       @db.Decimal(10, 2) @default(0)
-  notifiedIncrements Int           @default(0)
+  totalMinutes       Int            @default(0)
+  totalCharge        Decimal        @default(0) @db.Decimal(10, 2)
+  notifiedIncrements Int            @default(0)
   status             OvertimeStatus @default(ACTIVE)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
 
   @@map("overtime_logs")
 }
@@ -2348,27 +2392,27 @@ model AdoptionMessage {
 }
 
 model Cause {
-  id              String        @id @default(uuid())
-  creatorId       String
-  creator         User          @relation("CauseCreator", fields: [creatorId], references: [id])
-  title           String
-  description     String
-  category        CauseCategory
-  coverPhoto      String?
-  photos          String[]      @default([])
-  goalAmount      Decimal       @db.Decimal(10, 2)
-  raisedAmount    Decimal       @default(0.00) @db.Decimal(10, 2)
-  donorCount      Int           @default(0)
-  endDate         DateTime
-  status          CauseStatus   @default(pending_approval)
-  rejectionReason String?
-  approvedById    String?
-  approvedAt      DateTime?
+  id                String        @id @default(uuid())
+  creatorId         String
+  creator           User          @relation("CauseCreator", fields: [creatorId], references: [id])
+  title             String
+  description       String
+  category          CauseCategory
+  coverPhoto        String?
+  photos            String[]      @default([])
+  goalAmount        Decimal       @db.Decimal(10, 2)
+  raisedAmount      Decimal       @default(0.00) @db.Decimal(10, 2)
+  donorCount        Int           @default(0)
+  endDate           DateTime
+  status            CauseStatus   @default(pending_approval)
+  rejectionReason   String?
+  approvedById      String?
+  approvedAt        DateTime?
   withdrawalMethod  String?
   withdrawalAccount String?
-  deletedAt       DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  deletedAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   donations          Donation[]
   updates            CauseUpdate[]
@@ -2428,48 +2472,48 @@ model WithdrawalRequest {
 // ============================================================
 
 model FoodSeller {
-  id           String    @id @default(uuid())
-  userId       String    @unique
-  user         User      @relation(fields: [userId], references: [id])
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id])
   kitchenName  String
   bio          String?
   district     String?
   profilePhoto String?
   availability Json
-  avgRating    Decimal   @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int       @default(0)
-  totalSales   Int       @default(0)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  avgRating    Decimal  @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int      @default(0)
+  totalSales   Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  products       FoodProduct[]
-  ordersAsSeller FoodOrder[]   @relation("FoodSellerOrders")
-  reviewsReceived FoodReview[] @relation("FoodSellerReviewed")
+  products        FoodProduct[]
+  ordersAsSeller  FoodOrder[]   @relation("FoodSellerOrders")
+  reviewsReceived FoodReview[]  @relation("FoodSellerReviewed")
 
   @@index([isActive, district])
   @@map("food_sellers")
 }
 
 model FoodProduct {
-  id           String          @id @default(uuid())
+  id           String           @id @default(uuid())
   sellerId     String
-  seller       FoodSeller      @relation(fields: [sellerId], references: [id])
+  seller       FoodSeller       @relation(fields: [sellerId], references: [id])
   name         String
   targetAnimal FoodTargetAnimal
   description  String
-  ingredients  String[]        @default([])
-  allergens    String[]        @default([])
-  price        Decimal         @db.Decimal(8, 2)
+  ingredients  String[]         @default([])
+  allergens    String[]         @default([])
+  price        Decimal          @db.Decimal(8, 2)
   unitDesc     String
-  photos       String[]        @default([])
-  stock        Int             @default(0)
-  isAvailable  Boolean         @default(true)
-  avgRating    Decimal         @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int             @default(0)
+  photos       String[]         @default([])
+  stock        Int              @default(0)
+  isAvailable  Boolean          @default(true)
+  avgRating    Decimal          @default(0.00) @db.Decimal(3, 2)
+  totalReviews Int              @default(0)
   deletedAt    DateTime?
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
 
   orderItems FoodOrderItem[]
   reviews    FoodReview[]    @relation("FoodProductReviewed")
@@ -2521,12 +2565,12 @@ model FoodOrderItem {
 }
 
 model FoodReview {
-  id           String      @id @default(uuid())
+  id           String       @id @default(uuid())
   orderId      String
-  order        FoodOrder   @relation("FoodOrderReviews", fields: [orderId], references: [id])
+  order        FoodOrder    @relation("FoodOrderReviews", fields: [orderId], references: [id])
   reviewerId   String
-  reviewer     User        @relation("FoodReviewer", fields: [reviewerId], references: [id])
-  targetType   String      // 'product' | 'seller' | 'buyer'
+  reviewer     User         @relation("FoodReviewer", fields: [reviewerId], references: [id])
+  targetType   String // 'product' | 'seller' | 'buyer'
   productId    String?
   product      FoodProduct? @relation("FoodProductReviewed", fields: [productId], references: [id])
   sellerId     String?
@@ -2541,6 +2585,146 @@ model FoodReview {
   @@index([sellerId])
   @@index([orderId])
   @@map("food_reviews")
+}
+
+// ============================================================
+// SHOP PROFILES + PRODUCT CATALOG (Prompt 14)
+// ============================================================
+
+model ShopProfile {
+  id                String          @id @default(cuid())
+  businessProfileId String          @unique
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id])
+
+  shopName   String?
+  tagline    String?
+  categories ShopCategory[]
+
+  deliveryEnabled      Boolean @default(true)
+  deliveryRadiusKm     Int     @default(10)
+  deliveryCostEgp      Int     @default(25)
+  freeDeliveryAboveEgp Int?
+  pickupEnabled        Boolean @default(true)
+
+  status    ShopStatus @default(PENDING_DOCS)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  products ShopProduct[]
+  orders   ShopOrder[]
+
+  @@index([status])
+  @@map("shop_profiles")
+}
+
+model ShopProduct {
+  id            String      @id @default(cuid())
+  shopProfileId String
+  shopProfile   ShopProfile @relation(fields: [shopProfileId], references: [id])
+
+  name        String
+  brand       String?
+  category    ShopCategory
+  description String?      @db.Text
+
+  visionExtractedJson Json?
+  visionProcessedAt   DateTime?
+  visionModel         String?
+
+  weightGrams     Int?
+  dimensions      String?
+  targetPetType   String[] @default([])
+  targetAgeGroup  String[] @default([])
+  targetSizeGroup String[] @default([])
+
+  ingredientsList String?   @db.Text
+  safetyFlags     String[]  @default([])
+  safetyFlaggedAt DateTime?
+
+  priceEgp        Int
+  comparePriceEgp Int?
+  costEgp         Int?
+
+  stockCount        Int     @default(0)
+  lowStockThreshold Int     @default(5)
+  trackInventory    Boolean @default(true)
+  allowBackorder    Boolean @default(false)
+
+  photosUrls   String[] @default([])
+  thumbnailUrl String?
+
+  isActive   Boolean @default(true)
+  isFeatured Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orderItems ShopOrderItem[]
+
+  @@index([shopProfileId, category])
+  @@index([shopProfileId, isActive])
+  @@index([safetyFlags])
+  @@map("shop_products")
+}
+
+model ShopOrder {
+  id            String      @id @default(cuid())
+  shopProfileId String
+  shopProfile   ShopProfile @relation(fields: [shopProfileId], references: [id])
+  parentUserId  String
+  parentUser    User        @relation("ShopParentOrders", fields: [parentUserId], references: [id])
+
+  items ShopOrderItem[]
+
+  subtotalEgp     Int
+  deliveryCostEgp Int @default(0)
+  discountEgp     Int @default(0)
+  totalEgp        Int
+  platformFeeEgp  Int
+  shopNetEgp      Int
+
+  deliveryType    DeliveryType @default(DELIVERY)
+  deliveryAddress String?      @db.Text
+  deliveryLat     Float?
+  deliveryLng     Float?
+
+  status ShopOrderStatus @default(PENDING_PAYMENT)
+
+  confirmedAt        DateTime?
+  dispatchedAt       DateTime?
+  deliveredAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+
+  paymobOrderId       String?
+  paymobTransactionId String?
+  paidAt              DateTime?
+  refundedAt          DateTime?
+  refundedAmountEgp   Int?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopProfileId, status])
+  @@index([parentUserId])
+  @@map("shop_orders")
+}
+
+model ShopOrderItem {
+  id           String      @id @default(cuid())
+  orderId      String
+  order        ShopOrder   @relation(fields: [orderId], references: [id])
+  productId    String
+  product      ShopProduct @relation(fields: [productId], references: [id])
+  quantity     Int
+  unitPriceEgp Int
+  totalEgp     Int
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("shop_order_items")
 }
 
 // ── Event Bridge Delivery Tracking ──────────────────────────────────────────
@@ -2566,64 +2750,67 @@ model EventBridgeDelivery {
 // ============================================================
 
 model BusinessProfile {
-  id                   String         @id @default(cuid())
-  ownerId              String         @unique
-  owner                User           @relation(fields: [ownerId], references: [id])
+  id      String @id @default(cuid())
+  ownerId String @unique
+  owner   User   @relation(fields: [ownerId], references: [id])
 
   // Identity
-  businessName         String
-  businessType         BusinessType
-  description          String?        @db.Text
-  logoUrl              String?
-  coverPhotoUrl        String?
-  photosUrls           String[]       @default([])
+  businessName  String
+  businessType  BusinessType
+  description   String?      @db.Text
+  logoUrl       String?
+  coverPhotoUrl String?
+  photosUrls    String[]     @default([])
 
   // Legal
-  commercialRegNumber  String?
-  taxCard              String?        // Cloudinary URL for tax card doc
-  commercialRegDocUrl  String?
+  commercialRegNumber String?
+  taxCard             String? // Cloudinary URL for tax card doc
+  commercialRegDocUrl String?
 
   // Contact
-  businessEmail        String
-  businessPhone        String
-  whatsappNumber       String?
-  websiteUrl           String?
+  businessEmail  String
+  businessPhone  String
+  whatsappNumber String?
+  websiteUrl     String?
 
   // Location
-  primaryAddress       String
-  primaryCity          String
-  primaryLat           Float?
-  primaryLng           Float?
-  branches             BusinessBranch[]
+  primaryAddress String
+  primaryCity    String
+  primaryLat     Float?
+  primaryLng     Float?
+  branches       BusinessBranch[]
 
   // Services offered (roll-up of team)
-  servicesJson         Json?          // aggregated view of what team can do
+  servicesJson Json? // aggregated view of what team can do
 
   // Tier (team size limits)
-  businessTier         String         @default("FREE") // "FREE" or "PREMIUM"
+  businessTier String @default("FREE") // "FREE" or "PREMIUM"
 
   // Status
-  status               BusinessStatus @default(PENDING_DOCS)
-  appliedAt            DateTime       @default(now())
-  autoApprovedAt       DateTime?
-  adminReviewedAt      DateTime?
+  status          BusinessStatus @default(PENDING_DOCS)
+  appliedAt       DateTime       @default(now())
+  autoApprovedAt  DateTime?
+  adminReviewedAt DateTime?
 
   // Reputation (aggregated from team)
-  totalBookings        Int            @default(0)
-  averageRating        Float?
+  totalBookings Int    @default(0)
+  averageRating Float?
 
   // Team
-  teamMembers          TeamMember[]
-  invites              TeamInvite[]
+  teamMembers TeamMember[]
+  invites     TeamInvite[]
 
   // Kennel-specific profile (Prompt 12)
-  kennelProfile        KennelProfile?
+  kennelProfile KennelProfile?
 
   // PetHotel-specific profile (Prompt 13)
-  petHotelProfile      PetHotelProfile?
+  petHotelProfile PetHotelProfile?
 
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  // Shop-specific profile (Prompt 14)
+  shopProfile ShopProfile?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([primaryCity])
   @@index([status])
@@ -2632,50 +2819,50 @@ model BusinessProfile {
 }
 
 model BusinessBranch {
-  id          String          @id @default(cuid())
-  businessId  String
-  business    BusinessProfile @relation(fields: [businessId], references: [id])
-  name        String
-  address     String
-  city        String
-  lat         Float?
-  lng         Float?
-  isActive    Boolean         @default(true)
-  createdAt   DateTime        @default(now())
+  id         String          @id @default(cuid())
+  businessId String
+  business   BusinessProfile @relation(fields: [businessId], references: [id])
+  name       String
+  address    String
+  city       String
+  lat        Float?
+  lng        Float?
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
 
   @@index([businessId])
   @@map("business_branches")
 }
 
 model TeamMember {
-  id                    String           @id @default(cuid())
-  businessId            String
-  business              BusinessProfile  @relation(fields: [businessId], references: [id])
-  userId                String
-  user                  User             @relation("TeamMemberships", fields: [userId], references: [id])
+  id         String          @id @default(cuid())
+  businessId String
+  business   BusinessProfile @relation(fields: [businessId], references: [id])
+  userId     String
+  user       User            @relation("TeamMemberships", fields: [userId], references: [id])
 
-  role                  TeamRole         @default(PROVIDER)
-  providerType          ProviderType     // PETFRIEND or TRAINER
-  providerProfileId     String?          // links to PetFriendProfile or TrainerProfile
+  role              TeamRole     @default(PROVIDER)
+  providerType      ProviderType // PETFRIEND or TRAINER
+  providerProfileId String? // links to PetFriendProfile or TrainerProfile
 
   // Permissions granted by operator
-  canAcceptBookings     Boolean          @default(true)
-  canSetOwnAvailability Boolean          @default(true)
-  canMessageParents     Boolean          @default(true)
-  canWithdrawEarnings   Boolean          @default(true) // if false: operator manages payouts
+  canAcceptBookings     Boolean @default(true)
+  canSetOwnAvailability Boolean @default(true)
+  canMessageParents     Boolean @default(true)
+  canWithdrawEarnings   Boolean @default(true) // if false: operator manages payouts
 
   // Status
-  status                TeamMemberStatus @default(ACTIVE)
-  joinedAt              DateTime         @default(now())
-  suspendedAt           DateTime?
-  suspendedReason       String?
-  removedAt             DateTime?
+  status          TeamMemberStatus @default(ACTIVE)
+  joinedAt        DateTime         @default(now())
+  suspendedAt     DateTime?
+  suspendedReason String?
+  removedAt       DateTime?
 
   // Assignment
-  assignedBranchId      String?
+  assignedBranchId String?
 
-  createdAt             DateTime         @default(now())
-  updatedAt             DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([businessId, userId])
   @@index([businessId])
@@ -2688,19 +2875,19 @@ model TeamInvite {
   businessId         String
   business           BusinessProfile @relation(fields: [businessId], references: [id])
   inviteCode         String          @unique
-  inviteLinkUrl      String?         // full deep-link URL
-  invitedEmail       String?         // optional; if set, invite pre-fills on signup
+  inviteLinkUrl      String? // full deep-link URL
+  invitedEmail       String? // optional; if set, invite pre-fills on signup
   invitedPhone       String?
   invitedName        String?
   targetRole         TeamRole        @default(PROVIDER)
   targetProviderType ProviderType    @default(PETFRIEND)
 
-  createdBy          String          // userId of operator/manager who created
-  createdAt          DateTime        @default(now())
-  expiresAt          DateTime        // default 7 days from creation
-  usedAt             DateTime?
-  usedByUserId       String?
-  status             InviteStatus    @default(PENDING)
+  createdBy    String // userId of operator/manager who created
+  createdAt    DateTime     @default(now())
+  expiresAt    DateTime // default 7 days from creation
+  usedAt       DateTime?
+  usedByUserId String?
+  status       InviteStatus @default(PENDING)
 
   @@index([inviteCode])
   @@index([businessId, status])
@@ -2712,11 +2899,11 @@ model TeamInvite {
 // ============================================================
 
 enum ReferralStatus {
-  PENDING        // code shared, not yet used
-  SIGNED_UP      // referee signed up with code
-  QUALIFIED      // referee completed qualifying event
-  REWARDED       // referrer received reward
-  EXPIRED        // 90 days no action
+  PENDING // code shared, not yet used
+  SIGNED_UP // referee signed up with code
+  QUALIFIED // referee completed qualifying event
+  REWARDED // referrer received reward
+  EXPIRED // 90 days no action
 }
 
 model Referral {
@@ -2726,11 +2913,11 @@ model Referral {
   referralCode      String
   refereeUserId     String?
   referee           User?          @relation("ReferralsReceived", fields: [refereeUserId], references: [id])
-  refereeRole       String?        // "PARENT" or "PETFRIEND"
+  refereeRole       String? // "PARENT" or "PETFRIEND"
   status            ReferralStatus @default(PENDING)
   rewardEgp         Int            @default(0)
-  rewardType        String?        // "CREDIT" or "CASH"
-  qualifyingEventId String?        // booking ID that qualified the referral
+  rewardType        String? // "CREDIT" or "CASH"
+  qualifyingEventId String? // booking ID that qualified the referral
   createdAt         DateTime       @default(now())
   qualifiedAt       DateTime?
   rewardedAt        DateTime?
@@ -2768,13 +2955,13 @@ model ContactSubmission {
 }
 
 model WebApplicationDraft {
-  id        String    @id @default(uuid())
-  userId    String?   @unique  // null for guest applications
-  email     String?   @unique  // guest identifier when userId is null
-  step      Int       @default(1)
-  data      Json      @default("{}")
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  userId    String?  @unique // null for guest applications
+  email     String?  @unique // guest identifier when userId is null
+  step      Int      @default(1)
+  data      Json     @default("{}")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
   @@index([email])
