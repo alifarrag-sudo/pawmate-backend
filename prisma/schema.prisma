@@ -623,7 +623,7 @@ model User {
   payoutMethods         PayoutMethodRecord[]
   trainerProfile        TrainerProfile?
   // kennelProfile moved to BusinessProfile in Prompt 12
-  petHotelProfile       PetHotelProfile?
+  // petHotelProfile moved to BusinessProfile in Prompt 13
 
   // Referral system
   referralCode        String?           @unique
@@ -1191,74 +1191,216 @@ enum KennelStayStatus {
 }
 
 // ============================================================
-// PETHOTEL PROFILES (extends Kennel with room types)
+// PETHOTEL PROFILES (Prompt 13 — premium boarding, linked to BusinessProfile)
 // ============================================================
 
 model PetHotelProfile {
-  id     String @id @default(uuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                    String    @id @default(cuid())
+  businessProfileId     String    @unique
+  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
-  // Business info (same as Kennel)
-  businessName       String
-  commercialRegister String?
-  businessLicense    String?
-  taxCardNumber      String?
-  ownerName          String?
+  hotelName             String?
+  starRating            Int?
 
-  businessPhone String?
-  businessEmail String?
+  acceptsDogs           Boolean   @default(true)
+  acceptsCats           Boolean   @default(false)
+  acceptsOther          Boolean   @default(false)
+  maxPetsPerRoom        Int       @default(1)
+  hasPool               Boolean   @default(false)
+  hasGroomingSpa        Boolean   @default(false)
+  hasOnCallVet          Boolean   @default(false)
+  hasTrainingProgram    Boolean   @default(false)
+  hasLiveCameraAccess   Boolean   @default(false)
+  hasPickupDropoffService Boolean @default(false)
+  pickupRadiusKm        Int?
+  pickupCostEgp         Int?
 
-  // Facility
-  addressLine    String?
-  city           String?
-  district       String?
-  lat            Decimal? @db.Decimal(10, 8)
-  lng            Decimal? @db.Decimal(11, 8)
-  facilityPhotos String[] @default([]) // min 5
+  checkInWindowJson     Json
+  checkOutWindowJson    Json
 
-  totalCapacity  Int?
-  operatingHours Json?
-  daysOpen       String[]
+  requiresVaccinationProof    Boolean @default(true)
+  requiredVaccines            String[] @default(["rabies", "DHPP"])
 
-  petTypesAccepted String[]
-  sizesAccepted    String[]
+  requiresDeposit       Boolean   @default(true)
+  depositPercentage     Int       @default(25)
+  depositRefundWindowHours Int    @default(72)
 
-  // Room types: JSON array of { name, description, photos[], capacity, pricePerNight, amenities[] }
-  roomTypes Json @default("[]")
+  status                PetHotelStatus @default(PENDING_DOCS)
+  liabilityWaiverText   String?   @db.Text
+  liabilityWaiverVersion Int      @default(1)
 
-  // Premium amenities (all Kennel amenities + extras)
-  amenities String[] // includes: room_service, spa_grooming, webcam, daily_updates, private_play, luxury_bedding, special_diet, puppy_socialization
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
-  hasIsolationArea  Boolean @default(false)
-  emergencyVetName  String?
-  emergencyVetPhone String?
+  roomTypes             PetHotelRoomType[]
+  rooms                 PetHotelRoom[]
+  stays                 PetHotelStay[]
+  packages              PetHotelPackage[]
 
-  extraServices     Json?
-  pickupDropoffAvail Boolean @default(false)
-  pickupDropoffPrice Decimal? @db.Decimal(8, 2)
-
-  vaccinesRequired   String[]
-  requiresAssessment Boolean @default(false)
-  requiresTrialDay   Boolean @default(false)
-
-  minStayNights Int?
-  maxStayNights Int?
-
-  avgRating    Decimal @default(0.00) @db.Decimal(3, 2)
-  totalReviews Int     @default(0)
-
-  verificationStatus VerificationStatus @default(PENDING)
-  isVerified         Boolean            @default(false)
-  verifiedAt         DateTime?
-
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([city, isActive, isVerified])
-  @@index([lat, lng])
+  @@index([status])
   @@map("pethotel_profiles")
+}
+
+enum PetHotelStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+model PetHotelRoomType {
+  id                  String    @id @default(cuid())
+  petHotelProfileId   String
+  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+
+  name                String
+  tier                RoomTier
+  description         String?   @db.Text
+  squareMeters        Decimal?  @db.Decimal(6, 2)
+  maxPetWeightKg      Int?
+  suitableSizes       String[]  @default(["SMALL", "MEDIUM", "LARGE"])
+
+  amenities           String[]  @default([])
+
+  pricePerNightEgp    Int
+  longStayNights      Int       @default(7)
+  longStayPricePerNightEgp Int?
+
+  photosUrls          String[]  @default([])
+
+  isActive            Boolean   @default(true)
+
+  rooms               PetHotelRoom[]
+
+  @@index([petHotelProfileId])
+  @@map("pethotel_room_types")
+}
+
+enum RoomTier {
+  STANDARD
+  DELUXE
+  SUITE
+  PRESIDENTIAL
+}
+
+model PetHotelRoom {
+  id                  String    @id @default(cuid())
+  petHotelProfileId   String
+  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+  roomTypeId          String
+  roomType            PetHotelRoomType @relation(fields: [roomTypeId], references: [id])
+
+  roomNumber          String
+  floor               Int?
+  cameraStreamUrl     String?
+  notes               String?   @db.Text
+  isActive            Boolean   @default(true)
+  inMaintenanceUntil  DateTime?
+
+  stays               PetHotelStay[]
+
+  @@unique([petHotelProfileId, roomNumber])
+  @@index([petHotelProfileId])
+  @@map("pethotel_rooms")
+}
+
+model PetHotelPackage {
+  id                  String    @id @default(cuid())
+  petHotelProfileId   String
+  petHotelProfile     PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+
+  name                String
+  description         String?   @db.Text
+  durationNights      Int
+  eligibleRoomTiers   RoomTier[]
+
+  includesGrooming    Boolean   @default(false)
+  groomingSessionsCount Int     @default(0)
+  includesTraining    Boolean   @default(false)
+  trainingSessionsCount Int     @default(0)
+  includesVetCheckup  Boolean   @default(false)
+  includesPhotoshoot  Boolean   @default(false)
+  includesTransport   Boolean   @default(false)
+
+  totalPriceEgp       Int
+  savingsVsAlaCarte   Int?
+
+  isActive            Boolean   @default(true)
+  createdAt           DateTime  @default(now())
+
+  stays               PetHotelStay[]
+
+  @@index([petHotelProfileId])
+  @@map("pethotel_packages")
+}
+
+model PetHotelStay {
+  id                    String    @id @default(cuid())
+  bookingId             String    @unique
+  booking               Booking   @relation(fields: [bookingId], references: [id])
+  petHotelProfileId     String
+  petHotelProfile       PetHotelProfile @relation(fields: [petHotelProfileId], references: [id])
+  petHotelRoomId        String?
+  petHotelRoom          PetHotelRoom? @relation(fields: [petHotelRoomId], references: [id])
+  packageId             String?
+  package               PetHotelPackage? @relation(fields: [packageId], references: [id])
+
+  checkInDate           DateTime
+  checkOutDate          DateTime
+  actualCheckInAt       DateTime?
+  actualCheckOutAt      DateTime?
+
+  depositAmountEgp      Int
+  depositPaidAt         DateTime?
+  balanceAmountEgp      Int
+  balancePaidAt         DateTime?
+
+  intakePhotos          String[]  @default([])
+  intakeWeight          Decimal?  @db.Decimal(5, 2)
+  intakeNotes           String?   @db.Text
+  vaccinationDocsUrls   String[]  @default([])
+  liabilityWaiverSignedAt DateTime?
+  liabilityWaiverVersion Int?
+  liabilityWaiverSignatureUrl String?
+
+  dailyUpdatesJson      Json?
+
+  groomingSessionsDone  Int       @default(0)
+  trainingSessionsDone  Int       @default(0)
+  vetCheckupDone        Boolean   @default(false)
+
+  liveCameraEnabled     Boolean   @default(false)
+  cameraStreamUrl       String?
+
+  foodInstructions      String?   @db.Text
+  medicationsJson       Json?
+  specialRequests       String?   @db.Text
+
+  dischargePhotos       String[]  @default([])
+  dischargeWeight       Decimal?  @db.Decimal(5, 2)
+  dischargeNotes        String?   @db.Text
+
+  status                PetHotelStayStatus @default(DEPOSIT_PAID)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([petHotelProfileId, status])
+  @@index([checkInDate])
+  @@map("pethotel_stays")
+}
+
+enum PetHotelStayStatus {
+  DEPOSIT_PAID
+  BALANCE_DUE
+  IN_STAY
+  READY_FOR_CHECKOUT
+  CHECKED_OUT
+  CANCELLED_BEFORE_DEADLINE
+  CANCELLED_AFTER_DEADLINE
+  MEDICAL_HOLD
 }
 
 // ============================================================
@@ -1543,6 +1685,7 @@ model Booking {
   overtimeLog       OvertimeLog?
   endCode           BookingEndCode?      // 4-digit service end code
   kennelStay        KennelStay?          // Prompt 12: kennel boarding stay
+  petHotelStay        PetHotelStay?        // Prompt 13: pet hotel stay
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -2475,6 +2618,9 @@ model BusinessProfile {
 
   // Kennel-specific profile (Prompt 12)
   kennelProfile        KennelProfile?
+
+  // PetHotel-specific profile (Prompt 13)
+  petHotelProfile      PetHotelProfile?
 
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt

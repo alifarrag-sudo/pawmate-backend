@@ -34,6 +34,7 @@ import { ReferralsModule } from './modules/referrals/referrals.module';
 import { TrainerModule } from './modules/trainer/trainer.module';
 import { BusinessModule } from './modules/business/business.module';
 import { KennelModule } from './modules/kennel/kennel.module';
+import { PetHotelModule } from './modules/pethotel/pethotel.module';
 // Web platform modules (PawMateHub web — Prompt 10.5)
 import { SupportModule } from './modules/support/support.module';
 import { InvestorModule } from './modules/investor/investor.module';
@@ -98,6 +99,7 @@ import { WebApplicationModule } from './modules/web-application/web-application.
     TrainerModule,
     BusinessModule,
     KennelModule,
+    PetHotelModule,
     // Web platform modules
     SupportModule,
     InvestorModule,
