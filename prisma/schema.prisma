@@ -555,6 +555,51 @@ enum ShopOrderStatus {
   REFUNDED
 }
 
+enum VetStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+enum VetSpecialty {
+  GENERAL_PRACTICE
+  SURGERY
+  DENTISTRY
+  DERMATOLOGY
+  CARDIOLOGY
+  ONCOLOGY
+  OPHTHALMOLOGY
+  ORTHOPEDICS
+  INTERNAL_MEDICINE
+  EXOTIC_ANIMALS
+  EMERGENCY_CRITICAL_CARE
+  BEHAVIOR
+}
+
+enum AffiliationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum ConsultationType {
+  IN_CLINIC
+  HOME_VISIT
+  VIDEO_CONSULT
+  EMERGENCY
+  FOLLOW_UP
+}
+
+enum PrescriptionStatus {
+  ACTIVE
+  DISPENSED
+  EXPIRED
+  CANCELLED
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -1507,7 +1552,8 @@ model Pet {
   bookingPets  BookingPet[]
   petReviews   PetReview[]
   bookingTasks BookingTask[]
-  careLogs     CareLog[]
+  careLogs         CareLog[]
+  vetConsultations VetConsultation[]
 
   @@index([ownerId])
   @@map("pets")
@@ -1729,7 +1775,8 @@ model Booking {
   overtimeLog  OvertimeLog?
   endCode      BookingEndCode? // 4-digit service end code
   kennelStay   KennelStay? // Prompt 12: kennel boarding stay
-  petHotelStay PetHotelStay? // Prompt 13: pet hotel stay
+  petHotelStay    PetHotelStay?    // Prompt 13: pet hotel stay
+  vetConsultation VetConsultation? // Prompt 15: vet consultation
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -2727,6 +2774,152 @@ model ShopOrderItem {
   @@map("shop_order_items")
 }
 
+// ============================================================
+// VET CLINIC PROFILES + MEDICAL RECORDS (Prompt 15 — PDPL encrypted)
+// ============================================================
+
+model VetProfile {
+  id                    String    @id @default(cuid())
+  businessProfileId     String    @unique
+  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+
+  clinicName            String?
+  licenseNumber         String
+  syndicateCardUrl      String?
+  syndicateVerified     Boolean   @default(false)
+  syndicateVerifiedAt   DateTime?
+  syndicateVerifiedBy   String?
+
+  specialties           VetSpecialty[]
+
+  offersInClinic        Boolean   @default(true)
+  offersHomeVisits      Boolean   @default(false)
+  homeVisitRadiusKm     Int?
+  homeVisitCostEgp      Int?
+  offersVideoConsult    Boolean   @default(false)
+
+  offersEmergency       Boolean   @default(false)
+  emergencyPhone        String?
+  emergencyAvailability String?
+
+  consultationFeeEgp    Int
+  homeVisitFeeEgp       Int?
+  videoConsultFeeEgp    Int?
+
+  affiliations          VetAffiliation[]
+
+  dataRetentionYears    Int       @default(7)
+  consentVersion        Int       @default(1)
+  consentText           String?   @db.Text
+
+  status                VetStatus @default(PENDING_DOCS)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  consultations         VetConsultation[]
+
+  @@index([status])
+  @@map("vet_profiles")
+}
+
+model VetAffiliation {
+  id                  String    @id @default(cuid())
+  vetProfileId        String
+  vetProfile          VetProfile @relation(fields: [vetProfileId], references: [id])
+
+  institutionName     String
+  role                String?
+  licenseOrId         String?
+  documentUrl         String?
+
+  verificationStatus  AffiliationStatus @default(PENDING)
+  verifiedAt          DateTime?
+  verifiedBy          String?
+  rejectionReason     String?
+
+  createdAt           DateTime  @default(now())
+
+  @@index([vetProfileId])
+  @@index([verificationStatus])
+  @@map("vet_affiliations")
+}
+
+model VetConsultation {
+  id                  String    @id @default(cuid())
+  vetProfileId        String
+  vetProfile          VetProfile @relation(fields: [vetProfileId], references: [id])
+  petId               String
+  pet                 Pet       @relation(fields: [petId], references: [id])
+  bookingId           String?   @unique
+  booking             Booking?  @relation(fields: [bookingId], references: [id])
+
+  consultationType    ConsultationType
+  consultedAt         DateTime
+
+  chiefComplaintEnc   String?   @db.Text
+  findingsEnc         String?   @db.Text
+  diagnosisEnc        String?   @db.Text
+  treatmentPlanEnc    String?   @db.Text
+  notesEnc            String?   @db.Text
+
+  encryptionVersion   Int       @default(1)
+  encryptionKeyId     String?
+
+  weight              Decimal?  @db.Decimal(5, 2)
+  temperature         Decimal?  @db.Decimal(4, 1)
+  heartRate           Int?
+  followUpDate        DateTime?
+  followUpRequired    Boolean   @default(false)
+
+  attachmentsJson     Json?
+
+  parentConsentGiven  Boolean   @default(false)
+  parentConsentAt     DateTime?
+  consentVersion      Int?
+
+  isActive            Boolean   @default(true)
+  deletedAt           DateTime?
+
+  prescriptions       EPrescription[]
+
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([vetProfileId])
+  @@index([petId])
+  @@map("vet_consultations")
+}
+
+model EPrescription {
+  id                      String    @id @default(cuid())
+  consultationId          String
+  consultation            VetConsultation @relation(fields: [consultationId], references: [id])
+
+  prescriptionNumber      String    @unique
+  issuedAt                DateTime  @default(now())
+  expiresAt               DateTime
+
+  medicationsEnc          String    @db.Text
+  instructionsEnc         String?   @db.Text
+
+  encryptionVersion       Int       @default(1)
+
+  contentHash             String
+  hashAlgorithm           String    @default("SHA-256")
+
+  status                  PrescriptionStatus @default(ACTIVE)
+  dispensedAt             DateTime?
+  dispensedBy             String?
+
+  parentViewedAt          DateTime?
+
+  createdAt               DateTime  @default(now())
+
+  @@index([consultationId])
+  @@index([prescriptionNumber])
+  @@map("e_prescriptions")
+}
+
 // ── Event Bridge Delivery Tracking ──────────────────────────────────────────
 
 model EventBridgeDelivery {
@@ -2808,6 +3001,9 @@ model BusinessProfile {
 
   // Shop-specific profile (Prompt 14)
   shopProfile ShopProfile?
+
+  // Vet clinic profile (Prompt 15)
+  vetProfile   VetProfile?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

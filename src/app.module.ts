@@ -36,6 +36,9 @@ import { BusinessModule } from './modules/business/business.module';
 import { KennelModule } from './modules/kennel/kennel.module';
 import { PetHotelModule } from './modules/pethotel/pethotel.module';
 import { ShopModule } from './modules/shop/shop.module';
+// Vet clinic module (Prompt 15 — PDPL encrypted medical records)
+import { CryptoModule } from './modules/crypto/crypto.module';
+import { VetModule } from './modules/vet/vet.module';
 // Web platform modules (PawMateHub web — Prompt 10.5)
 import { SupportModule } from './modules/support/support.module';
 import { InvestorModule } from './modules/investor/investor.module';
@@ -102,6 +105,9 @@ import { WebApplicationModule } from './modules/web-application/web-application.
     KennelModule,
     PetHotelModule,
     ShopModule,
+    // Medical encryption (global — Prompt 15)
+    CryptoModule,
+    VetModule,
     // Web platform modules
     SupportModule,
     InvestorModule,
