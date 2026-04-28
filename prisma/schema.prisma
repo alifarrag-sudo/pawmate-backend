@@ -372,6 +372,13 @@ enum ModerationAction {
   removed
 }
 
+enum ReplyStatus {
+  NO_REPLY
+  DRAFT_SUBMITTED
+  APPROVED
+  REJECTED
+}
+
 enum PlaceCategory {
   park
   cafe
@@ -1581,18 +1588,18 @@ model Pet {
   updatedAt DateTime @updatedAt
 
   // Relations
-  medicalInfo  PetMedicalInfo?
-  vaccinations PetVaccination[]
-  medications  PetMedication[]
-  behavior     PetBehavior?
-  schedules    PetSchedule[]
-  bookingPets  BookingPet[]
-  petReviews   PetReview[]
-  bookingTasks BookingTask[]
-  careLogs         CareLog[]
-  vetConsultations VetConsultation[]
-  groomingAllergyNotes    String?    @db.Text
-  groomingProductsToAvoid String[]   @default([])
+  medicalInfo             PetMedicalInfo?
+  vaccinations            PetVaccination[]
+  medications             PetMedication[]
+  behavior                PetBehavior?
+  schedules               PetSchedule[]
+  bookingPets             BookingPet[]
+  petReviews              PetReview[]
+  bookingTasks            BookingTask[]
+  careLogs                CareLog[]
+  vetConsultations        VetConsultation[]
+  groomingAllergyNotes    String?               @db.Text
+  groomingProductsToAvoid String[]              @default([])
   lastGroomedAt           DateTime?
   groomingAppointments    GroomingAppointment[]
 
@@ -1804,20 +1811,20 @@ model Booking {
   deletedAt DateTime?
 
   // Relations
-  pets         BookingPet[]
-  extensions   BookingExtension[]
-  dispute      BookingDispute?
-  tasks        BookingTask[]
-  walkSessions WalkSession[]
-  reviews      Review[]
-  transactions PaymentTransaction[]
-  payouts      PetFriendPayout[]
-  careLogs     CareLog[]
-  overtimeLog  OvertimeLog?
-  endCode      BookingEndCode? // 4-digit service end code
-  kennelStay   KennelStay? // Prompt 12: kennel boarding stay
-  petHotelStay    PetHotelStay?    // Prompt 13: pet hotel stay
-  vetConsultation VetConsultation? // Prompt 15: vet consultation
+  pets                BookingPet[]
+  extensions          BookingExtension[]
+  dispute             BookingDispute?
+  tasks               BookingTask[]
+  walkSessions        WalkSession[]
+  review              Review?
+  transactions        PaymentTransaction[]
+  payouts             PetFriendPayout[]
+  careLogs            CareLog[]
+  overtimeLog         OvertimeLog?
+  endCode             BookingEndCode? // 4-digit service end code
+  kennelStay          KennelStay? // Prompt 12: kennel boarding stay
+  petHotelStay        PetHotelStay? // Prompt 13: pet hotel stay
+  vetConsultation     VetConsultation? // Prompt 15: vet consultation
   groomingAppointment GroomingAppointment? // Prompt 16: grooming appointment
 
   @@index([parentId, status, createdAt(sort: Desc)])
@@ -2084,43 +2091,106 @@ model PricingBounds {
 // ============================================================
 
 model Review {
-  id           String       @id @default(uuid())
-  bookingId    String
-  booking      Booking      @relation(fields: [bookingId], references: [id])
-  reviewerId   String
-  reviewer     User         @relation("Reviewer", fields: [reviewerId], references: [id])
-  revieweeId   String
-  reviewee     User         @relation("Reviewee", fields: [revieweeId], references: [id])
-  revieweeType RevieweeType
+  id         String  @id @default(cuid())
+  bookingId  String  @unique
+  booking    Booking @relation(fields: [bookingId], references: [id])
+  reviewerId String
+  reviewer   User    @relation("Reviewer", fields: [reviewerId], references: [id])
 
-  overallRating Decimal @db.Decimal(3, 2)
+  // Legacy fields kept for backward compat
+  revieweeId   String?
+  reviewee     User?         @relation("Reviewee", fields: [revieweeId], references: [id])
+  revieweeType RevieweeType?
 
-  // Parent reviewing PetFriend/provider
+  // Provider identity (polymorphic)
+  providerUserId    String?
+  kennelProfileId   String?
+  petHotelProfileId String?
+  shopProfileId     String?
+  vetProfileId      String?
+  groomerProfileId  String?
+  providerType      ProviderType?
+
+  // Ratings
+  rating              Int      @default(5)
+  overallRating       Decimal? @db.Decimal(3, 2)
   ratingCommunication Decimal? @db.Decimal(3, 2)
   ratingReliability   Decimal? @db.Decimal(3, 2)
   ratingCareQuality   Decimal? @db.Decimal(3, 2)
   ratingValue         Decimal? @db.Decimal(3, 2)
+  ratingPetBehavior   Decimal? @db.Decimal(3, 2)
+  ratingCleanliness   Decimal? @db.Decimal(3, 2)
 
-  // PetFriend reviewing Parent
-  ratingPetBehavior Decimal? @db.Decimal(3, 2)
-  ratingCleanliness Decimal? @db.Decimal(3, 2)
-
-  comment     String
+  // Content
+  tags        String[] @default([])
+  comment     String?  @db.Text
   wouldRebook Boolean?
-  photos      String[]
+  photos      String[] @default([])
 
-  isPublished      Boolean           @default(false)
+  // Reply
+  replyText            String?     @db.Text
+  replyStatus          ReplyStatus @default(NO_REPLY)
+  replyDraftText       String?     @db.Text
+  replySubmittedAt     DateTime?
+  replyApprovedAt      DateTime?
+  replyApprovedBy      String?
+  replyRejectedAt      DateTime?
+  replyRejectionReason String?
+
+  // Moderation
+  isVisible        Boolean           @default(true)
+  isPublished      Boolean           @default(true)
+  isFlagged        Boolean           @default(false)
+  flaggedAt        DateTime?
+  flaggedReason    String?
+  flaggedByUserId  String?
   isReported       Boolean           @default(false)
   isModerated      Boolean           @default(false)
   moderationAction ModerationAction?
   moderationNote   String?
+  moderatedAt      DateTime?
+  moderatedBy      String?
+
+  // Analytics
+  helpfulCount Int @default(0)
 
   submittedAt DateTime  @default(now())
   publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
+  @@index([providerUserId])
+  @@index([kennelProfileId])
+  @@index([petHotelProfileId])
+  @@index([shopProfileId])
+  @@index([vetProfileId])
+  @@index([groomerProfileId])
+  @@index([providerType, rating])
+  @@index([isVisible, isFlagged])
   @@index([revieweeId, revieweeType, isPublished])
   @@index([bookingId])
   @@map("reviews")
+}
+
+model ReputationSnapshot {
+  id                String       @id @default(cuid())
+  providerType      ProviderType
+  providerProfileId String
+
+  totalReviews       Int    @default(0)
+  averageRating      Float  @default(0)
+  ratingDistribution Json   @default("{\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0}")
+  fiveStarCount      Int    @default(0)
+  recentRating       Float?
+  responseRate       Float?
+
+  topTags String[] @default([])
+
+  computedAt DateTime @default(now())
+
+  @@unique([providerType, providerProfileId])
+  @@index([averageRating])
+  @@map("reputation_snapshots")
 }
 
 model PetReview {
@@ -2821,65 +2891,65 @@ model ShopOrderItem {
 // ============================================================
 
 model VetProfile {
-  id                    String    @id @default(cuid())
-  businessProfileId     String    @unique
-  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+  id                String          @id @default(cuid())
+  businessProfileId String          @unique
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
-  clinicName            String?
-  licenseNumber         String
-  syndicateCardUrl      String?
-  syndicateVerified     Boolean   @default(false)
-  syndicateVerifiedAt   DateTime?
-  syndicateVerifiedBy   String?
+  clinicName          String?
+  licenseNumber       String
+  syndicateCardUrl    String?
+  syndicateVerified   Boolean   @default(false)
+  syndicateVerifiedAt DateTime?
+  syndicateVerifiedBy String?
 
-  specialties           VetSpecialty[]
+  specialties VetSpecialty[]
 
-  offersInClinic        Boolean   @default(true)
-  offersHomeVisits      Boolean   @default(false)
-  homeVisitRadiusKm     Int?
-  homeVisitCostEgp      Int?
-  offersVideoConsult    Boolean   @default(false)
+  offersInClinic     Boolean @default(true)
+  offersHomeVisits   Boolean @default(false)
+  homeVisitRadiusKm  Int?
+  homeVisitCostEgp   Int?
+  offersVideoConsult Boolean @default(false)
 
-  offersEmergency       Boolean   @default(false)
+  offersEmergency       Boolean @default(false)
   emergencyPhone        String?
   emergencyAvailability String?
 
-  consultationFeeEgp    Int
-  homeVisitFeeEgp       Int?
-  videoConsultFeeEgp    Int?
+  consultationFeeEgp Int
+  homeVisitFeeEgp    Int?
+  videoConsultFeeEgp Int?
 
-  affiliations          VetAffiliation[]
+  affiliations VetAffiliation[]
 
-  dataRetentionYears    Int       @default(7)
-  consentVersion        Int       @default(1)
-  consentText           String?   @db.Text
+  dataRetentionYears Int     @default(7)
+  consentVersion     Int     @default(1)
+  consentText        String? @db.Text
 
-  status                VetStatus @default(PENDING_DOCS)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  status    VetStatus @default(PENDING_DOCS)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  consultations         VetConsultation[]
+  consultations VetConsultation[]
 
   @@index([status])
   @@map("vet_profiles")
 }
 
 model VetAffiliation {
-  id                  String    @id @default(cuid())
-  vetProfileId        String
-  vetProfile          VetProfile @relation(fields: [vetProfileId], references: [id])
+  id           String     @id @default(cuid())
+  vetProfileId String
+  vetProfile   VetProfile @relation(fields: [vetProfileId], references: [id])
 
-  institutionName     String
-  role                String?
-  licenseOrId         String?
-  documentUrl         String?
+  institutionName String
+  role            String?
+  licenseOrId     String?
+  documentUrl     String?
 
-  verificationStatus  AffiliationStatus @default(PENDING)
-  verifiedAt          DateTime?
-  verifiedBy          String?
-  rejectionReason     String?
+  verificationStatus AffiliationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  verifiedBy         String?
+  rejectionReason    String?
 
-  createdAt           DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([vetProfileId])
   @@index([verificationStatus])
@@ -2887,45 +2957,45 @@ model VetAffiliation {
 }
 
 model VetConsultation {
-  id                  String    @id @default(cuid())
-  vetProfileId        String
-  vetProfile          VetProfile @relation(fields: [vetProfileId], references: [id])
-  petId               String
-  pet                 Pet       @relation(fields: [petId], references: [id])
-  bookingId           String?   @unique
-  booking             Booking?  @relation(fields: [bookingId], references: [id])
+  id           String     @id @default(cuid())
+  vetProfileId String
+  vetProfile   VetProfile @relation(fields: [vetProfileId], references: [id])
+  petId        String
+  pet          Pet        @relation(fields: [petId], references: [id])
+  bookingId    String?    @unique
+  booking      Booking?   @relation(fields: [bookingId], references: [id])
 
-  consultationType    ConsultationType
-  consultedAt         DateTime
+  consultationType ConsultationType
+  consultedAt      DateTime
 
-  chiefComplaintEnc   String?   @db.Text
-  findingsEnc         String?   @db.Text
-  diagnosisEnc        String?   @db.Text
-  treatmentPlanEnc    String?   @db.Text
-  notesEnc            String?   @db.Text
+  chiefComplaintEnc String? @db.Text
+  findingsEnc       String? @db.Text
+  diagnosisEnc      String? @db.Text
+  treatmentPlanEnc  String? @db.Text
+  notesEnc          String? @db.Text
 
-  encryptionVersion   Int       @default(1)
-  encryptionKeyId     String?
+  encryptionVersion Int     @default(1)
+  encryptionKeyId   String?
 
-  weight              Decimal?  @db.Decimal(5, 2)
-  temperature         Decimal?  @db.Decimal(4, 1)
-  heartRate           Int?
-  followUpDate        DateTime?
-  followUpRequired    Boolean   @default(false)
+  weight           Decimal?  @db.Decimal(5, 2)
+  temperature      Decimal?  @db.Decimal(4, 1)
+  heartRate        Int?
+  followUpDate     DateTime?
+  followUpRequired Boolean   @default(false)
 
-  attachmentsJson     Json?
+  attachmentsJson Json?
 
-  parentConsentGiven  Boolean   @default(false)
-  parentConsentAt     DateTime?
-  consentVersion      Int?
+  parentConsentGiven Boolean   @default(false)
+  parentConsentAt    DateTime?
+  consentVersion     Int?
 
-  isActive            Boolean   @default(true)
-  deletedAt           DateTime?
+  isActive  Boolean   @default(true)
+  deletedAt DateTime?
 
-  prescriptions       EPrescription[]
+  prescriptions EPrescription[]
 
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([vetProfileId])
   @@index([petId])
@@ -2933,29 +3003,29 @@ model VetConsultation {
 }
 
 model EPrescription {
-  id                      String    @id @default(cuid())
-  consultationId          String
-  consultation            VetConsultation @relation(fields: [consultationId], references: [id])
+  id             String          @id @default(cuid())
+  consultationId String
+  consultation   VetConsultation @relation(fields: [consultationId], references: [id])
 
-  prescriptionNumber      String    @unique
-  issuedAt                DateTime  @default(now())
-  expiresAt               DateTime
+  prescriptionNumber String   @unique
+  issuedAt           DateTime @default(now())
+  expiresAt          DateTime
 
-  medicationsEnc          String    @db.Text
-  instructionsEnc         String?   @db.Text
+  medicationsEnc  String  @db.Text
+  instructionsEnc String? @db.Text
 
-  encryptionVersion       Int       @default(1)
+  encryptionVersion Int @default(1)
 
-  contentHash             String
-  hashAlgorithm           String    @default("SHA-256")
+  contentHash   String
+  hashAlgorithm String @default("SHA-256")
 
-  status                  PrescriptionStatus @default(ACTIVE)
-  dispensedAt             DateTime?
-  dispensedBy             String?
+  status      PrescriptionStatus @default(ACTIVE)
+  dispensedAt DateTime?
+  dispensedBy String?
 
-  parentViewedAt          DateTime?
+  parentViewedAt DateTime?
 
-  createdAt               DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([consultationId])
   @@index([prescriptionNumber])
@@ -2967,39 +3037,39 @@ model EPrescription {
 // ============================================================
 
 model GroomerProfile {
-  id                    String    @id @default(cuid())
-  businessProfileId     String    @unique
-  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+  id                String          @id @default(cuid())
+  businessProfileId String          @unique
+  businessProfile   BusinessProfile @relation(fields: [businessProfileId], references: [id])
 
-  hasSalon              Boolean   @default(true)
-  salonAddress          String?
-  salonLat              Float?
-  salonLng              Float?
-  hasMobileVan          Boolean   @default(false)
-  mobileVanRadiusKm     Int?
-  mobileVanCostEgp      Int?
-  freeVanAboveEgp       Int?
+  hasSalon          Boolean @default(true)
+  salonAddress      String?
+  salonLat          Float?
+  salonLng          Float?
+  hasMobileVan      Boolean @default(false)
+  mobileVanRadiusKm Int?
+  mobileVanCostEgp  Int?
+  freeVanAboveEgp   Int?
 
-  experienceYears       Int?
-  bio                   String?   @db.Text
+  experienceYears Int?
+  bio             String? @db.Text
 
-  acceptsDogs           Boolean   @default(true)
-  acceptsCats           Boolean   @default(false)
-  acceptsOther          Boolean   @default(false)
+  acceptsDogs  Boolean @default(true)
+  acceptsCats  Boolean @default(false)
+  acceptsOther Boolean @default(false)
 
-  slotDurationMinutes   Int       @default(60)
-  advanceBookingDays    Int       @default(30)
-  sameHourBooking       Boolean   @default(false)
+  slotDurationMinutes     Int     @default(60)
+  advanceBookingDays      Int     @default(30)
+  sameHourBooking         Boolean @default(false)
   cancellationWindowHours Int     @default(24)
 
-  portfolioPhotosUrls   String[]  @default([])
+  portfolioPhotosUrls String[] @default([])
 
-  status                GroomerStatus @default(PENDING_DOCS)
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  status    GroomerStatus @default(PENDING_DOCS)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
-  services              GroomerService[]
-  appointments          GroomingAppointment[]
+  services     GroomerService[]
+  appointments GroomingAppointment[]
 
   @@index([status])
   @@index([hasMobileVan])
@@ -3007,70 +3077,70 @@ model GroomerProfile {
 }
 
 model GroomerService {
-  id                  String    @id @default(cuid())
-  groomerProfileId    String
-  groomerProfile      GroomerProfile @relation(fields: [groomerProfileId], references: [id])
+  id               String         @id @default(cuid())
+  groomerProfileId String
+  groomerProfile   GroomerProfile @relation(fields: [groomerProfileId], references: [id])
 
-  serviceType         GroomingServiceType
-  name                String
-  description         String?
-  durationMinutes     Int
+  serviceType     GroomingServiceType
+  name            String
+  description     String?
+  durationMinutes Int
 
-  priceSmallEgp       Int?
-  priceMediumEgp      Int?
-  priceLargeEgp       Int?
-  priceXLEgp          Int?
-  priceFlat           Int?
+  priceSmallEgp  Int?
+  priceMediumEgp Int?
+  priceLargeEgp  Int?
+  priceXLEgp     Int?
+  priceFlat      Int?
 
   mobileVanSurchargeEgp Int?
 
-  isActive            Boolean   @default(true)
-  isPopular           Boolean   @default(false)
+  isActive  Boolean @default(true)
+  isPopular Boolean @default(false)
 
-  appointments        GroomingAppointment[]
+  appointments GroomingAppointment[]
 
   @@index([groomerProfileId])
   @@map("groomer_services")
 }
 
 model GroomingAppointment {
-  id                    String    @id @default(cuid())
-  bookingId             String    @unique
-  booking               Booking   @relation(fields: [bookingId], references: [id])
-  groomerProfileId      String
-  groomerProfile        GroomerProfile @relation(fields: [groomerProfileId], references: [id])
-  serviceId             String
-  service               GroomerService @relation(fields: [serviceId], references: [id])
-  petId                 String
-  pet                   Pet       @relation(fields: [petId], references: [id])
+  id               String         @id @default(cuid())
+  bookingId        String         @unique
+  booking          Booking        @relation(fields: [bookingId], references: [id])
+  groomerProfileId String
+  groomerProfile   GroomerProfile @relation(fields: [groomerProfileId], references: [id])
+  serviceId        String
+  service          GroomerService @relation(fields: [serviceId], references: [id])
+  petId            String
+  pet              Pet            @relation(fields: [petId], references: [id])
 
-  mode                  GroomingMode @default(IN_SALON)
-  appointmentAt         DateTime
-  estimatedDurationMin  Int
-  actualDurationMin     Int?
+  mode                 GroomingMode @default(IN_SALON)
+  appointmentAt        DateTime
+  estimatedDurationMin Int
+  actualDurationMin    Int?
 
-  clientAddress         String?   @db.Text
-  clientLat             Float?
-  clientLng             Float?
-  travelSurchargeEgp    Int       @default(0)
+  clientAddress      String? @db.Text
+  clientLat          Float?
+  clientLng          Float?
+  travelSurchargeEgp Int     @default(0)
 
-  allergyNotes          String?   @db.Text
-  specialInstructions   String?   @db.Text
+  allergyNotes        String? @db.Text
+  specialInstructions String? @db.Text
 
-  beforePhotosUrls      String[]  @default([])
-  afterPhotosUrls       String[]  @default([])
+  beforePhotosUrls String[] @default([])
+  afterPhotosUrls  String[] @default([])
 
-  groomingNotes         String?   @db.Text
-  reactionsObserved     String[]  @default([])
+  groomingNotes     String?  @db.Text
+  reactionsObserved String[] @default([])
 
-  sharedByParent        Boolean   @default(false)
-  shareToken            String?   @unique
-  shareTokenExpiresAt   DateTime?
+  sharedByParent      Boolean   @default(false)
+  shareToken          String?   @unique
+  shareTokenExpiresAt DateTime?
 
-  status                AppointmentStatus @default(CONFIRMED)
+  status AppointmentStatus @default(CONFIRMED)
 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([groomerProfileId, status])
   @@index([appointmentAt])
@@ -3161,10 +3231,10 @@ model BusinessProfile {
   shopProfile ShopProfile?
 
   // Vet clinic profile (Prompt 15)
-  vetProfile   VetProfile?
+  vetProfile VetProfile?
 
   // Groomer profile (Prompt 16)
-  groomerProfile   GroomerProfile?
+  groomerProfile GroomerProfile?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
