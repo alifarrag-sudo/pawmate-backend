@@ -600,6 +600,43 @@ enum PrescriptionStatus {
   CANCELLED
 }
 
+enum GroomerStatus {
+  PENDING_DOCS
+  APPROVED
+  ADMIN_REVIEW
+  SUSPENDED
+  REJECTED
+  DEACTIVATED
+}
+
+enum GroomingServiceType {
+  BATH_ONLY
+  HAIRCUT_ONLY
+  NAIL_TRIM
+  EAR_CLEANING
+  TEETH_BRUSHING
+  ANAL_GLAND_EXPRESSION
+  FULL_GROOM
+  LUXURY_GROOM
+  PUPPY_FIRST_GROOM
+  DEMATTING
+  FLEA_TREATMENT_BATH
+  CUSTOM
+}
+
+enum GroomingMode {
+  IN_SALON
+  MOBILE_VAN
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
 // ============================================================
 // USERS
 // ============================================================
@@ -1554,6 +1591,10 @@ model Pet {
   bookingTasks BookingTask[]
   careLogs         CareLog[]
   vetConsultations VetConsultation[]
+  groomingAllergyNotes    String?    @db.Text
+  groomingProductsToAvoid String[]   @default([])
+  lastGroomedAt           DateTime?
+  groomingAppointments    GroomingAppointment[]
 
   @@index([ownerId])
   @@map("pets")
@@ -1777,6 +1818,7 @@ model Booking {
   kennelStay   KennelStay? // Prompt 12: kennel boarding stay
   petHotelStay    PetHotelStay?    // Prompt 13: pet hotel stay
   vetConsultation VetConsultation? // Prompt 15: vet consultation
+  groomingAppointment GroomingAppointment? // Prompt 16: grooming appointment
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -2920,6 +2962,122 @@ model EPrescription {
   @@map("e_prescriptions")
 }
 
+// ============================================================
+// GROOMER PROFILES + APPOINTMENTS (Prompt 16 — final provider type)
+// ============================================================
+
+model GroomerProfile {
+  id                    String    @id @default(cuid())
+  businessProfileId     String    @unique
+  businessProfile       BusinessProfile @relation(fields: [businessProfileId], references: [id])
+
+  hasSalon              Boolean   @default(true)
+  salonAddress          String?
+  salonLat              Float?
+  salonLng              Float?
+  hasMobileVan          Boolean   @default(false)
+  mobileVanRadiusKm     Int?
+  mobileVanCostEgp      Int?
+  freeVanAboveEgp       Int?
+
+  experienceYears       Int?
+  bio                   String?   @db.Text
+
+  acceptsDogs           Boolean   @default(true)
+  acceptsCats           Boolean   @default(false)
+  acceptsOther          Boolean   @default(false)
+
+  slotDurationMinutes   Int       @default(60)
+  advanceBookingDays    Int       @default(30)
+  sameHourBooking       Boolean   @default(false)
+  cancellationWindowHours Int     @default(24)
+
+  portfolioPhotosUrls   String[]  @default([])
+
+  status                GroomerStatus @default(PENDING_DOCS)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  services              GroomerService[]
+  appointments          GroomingAppointment[]
+
+  @@index([status])
+  @@index([hasMobileVan])
+  @@map("groomer_profiles")
+}
+
+model GroomerService {
+  id                  String    @id @default(cuid())
+  groomerProfileId    String
+  groomerProfile      GroomerProfile @relation(fields: [groomerProfileId], references: [id])
+
+  serviceType         GroomingServiceType
+  name                String
+  description         String?
+  durationMinutes     Int
+
+  priceSmallEgp       Int?
+  priceMediumEgp      Int?
+  priceLargeEgp       Int?
+  priceXLEgp          Int?
+  priceFlat           Int?
+
+  mobileVanSurchargeEgp Int?
+
+  isActive            Boolean   @default(true)
+  isPopular           Boolean   @default(false)
+
+  appointments        GroomingAppointment[]
+
+  @@index([groomerProfileId])
+  @@map("groomer_services")
+}
+
+model GroomingAppointment {
+  id                    String    @id @default(cuid())
+  bookingId             String    @unique
+  booking               Booking   @relation(fields: [bookingId], references: [id])
+  groomerProfileId      String
+  groomerProfile        GroomerProfile @relation(fields: [groomerProfileId], references: [id])
+  serviceId             String
+  service               GroomerService @relation(fields: [serviceId], references: [id])
+  petId                 String
+  pet                   Pet       @relation(fields: [petId], references: [id])
+
+  mode                  GroomingMode @default(IN_SALON)
+  appointmentAt         DateTime
+  estimatedDurationMin  Int
+  actualDurationMin     Int?
+
+  clientAddress         String?   @db.Text
+  clientLat             Float?
+  clientLng             Float?
+  travelSurchargeEgp    Int       @default(0)
+
+  allergyNotes          String?   @db.Text
+  specialInstructions   String?   @db.Text
+
+  beforePhotosUrls      String[]  @default([])
+  afterPhotosUrls       String[]  @default([])
+
+  groomingNotes         String?   @db.Text
+  reactionsObserved     String[]  @default([])
+
+  sharedByParent        Boolean   @default(false)
+  shareToken            String?   @unique
+  shareTokenExpiresAt   DateTime?
+
+  status                AppointmentStatus @default(CONFIRMED)
+
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([groomerProfileId, status])
+  @@index([appointmentAt])
+  @@index([petId])
+  @@map("grooming_appointments")
+}
+
 // ── Event Bridge Delivery Tracking ──────────────────────────────────────────
 
 model EventBridgeDelivery {
@@ -3004,6 +3162,9 @@ model BusinessProfile {
 
   // Vet clinic profile (Prompt 15)
   vetProfile   VetProfile?
+
+  // Groomer profile (Prompt 16)
+  groomerProfile   GroomerProfile?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
