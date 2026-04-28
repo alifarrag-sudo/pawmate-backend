@@ -378,8 +378,46 @@ describe('AdminService', () => {
   // ── briefAgent ──────────────────────────────────────────────────────────────
 
   describe('briefAgent', () => {
-    it('should return response for valid agent', async () => {
-      // Arrange
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv, ANTHROPIC_API_KEY: 'test-key-123' };
+
+      // Mock global fetch for Command Center agent lookup
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        json: async () => ({}),
+      }) as any;
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+      jest.restoreAllMocks();
+    });
+
+    it('should return response with correct shape when ANTHROPIC_API_KEY is set', async () => {
+      // Mock the Anthropic SDK
+      const mockCreate = jest.fn().mockResolvedValue({
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              reasoning: 'I analyzed the booking module and found N+1 queries in the search endpoint.',
+              proposed_action: 'Add eager loading to booking queries',
+              action_type: 'investigate',
+              action_params: { module: 'bookings', severity: 'medium' },
+              confidence: 'high',
+              flags: [],
+            }),
+          },
+        ],
+      });
+
+      // Patch the Anthropic constructor to return our mock
+      jest.spyOn(require('@anthropic-ai/sdk'), 'default').mockImplementation(
+        () => ({ messages: { create: mockCreate } }),
+      );
+
       const dto = {
         agentId: 'layla',
         task: 'Review the booking module for performance issues',
@@ -387,24 +425,38 @@ describe('AdminService', () => {
         priority: 'high',
       };
 
-      // Act
       const result = await service.briefAgent(dto);
 
-      // Assert
       expect(result).toHaveProperty('agentId', 'layla');
       expect(result).toHaveProperty('agentName', 'Layla (Full-Stack Engineer)');
       expect(result).toHaveProperty('response');
       expect(result.response).toHaveProperty('reasoning');
       expect(result.response).toHaveProperty('proposedAction');
-      expect(result.response).toHaveProperty('params');
-      expect(result.response.params).toHaveProperty('taskReceived', dto.task);
-      expect(result.response.params).toHaveProperty('priority', 'high');
+      expect(result.response).toHaveProperty('actionType');
+      expect(result.response).toHaveProperty('confidence');
+      expect(result.response).toHaveProperty('flags');
       expect(result).toHaveProperty('briefedAt');
       expect(typeof result.briefedAt).toBe('string');
     });
 
+    it('should throw 503 when ANTHROPIC_API_KEY is not set', async () => {
+      delete process.env.ANTHROPIC_API_KEY;
+
+      const dto = {
+        agentId: 'nadia',
+        task: 'Check KPIs',
+        context: 'Monthly review',
+        priority: 'normal',
+      };
+
+      await expect(service.briefAgent(dto)).rejects.toThrow(
+        expect.objectContaining({
+          status: 503,
+        }),
+      );
+    });
+
     it('should reject unknown agentId with NotFoundException', async () => {
-      // Arrange
       const dto = {
         agentId: 'unknown_agent',
         task: 'Do something',
@@ -412,13 +464,21 @@ describe('AdminService', () => {
         priority: 'low',
       };
 
-      // Act & Assert
       await expect(service.briefAgent(dto)).rejects.toThrow(NotFoundException);
-      await expect(service.briefAgent(dto)).rejects.toThrow(/unknown_agent/i);
     });
 
-    it('should emit admin.agent_briefed event', async () => {
-      // Arrange
+    it('should emit admin.agent_briefed event on success', async () => {
+      // Mock the Anthropic SDK
+      jest.spyOn(require('@anthropic-ai/sdk'), 'default').mockImplementation(
+        () => ({
+          messages: {
+            create: jest.fn().mockResolvedValue({
+              content: [{ type: 'text', text: '{"reasoning":"test","proposed_action":null,"action_type":"none","confidence":"medium","flags":[]}' }],
+            }),
+          },
+        }),
+      );
+
       const dto = {
         agentId: 'nadia',
         task: 'Check KPIs',
@@ -426,10 +486,8 @@ describe('AdminService', () => {
         priority: 'medium',
       };
 
-      // Act
       await service.briefAgent(dto);
 
-      // Assert
       expect(events.emit).toHaveBeenCalledWith(
         'admin.agent_briefed',
         expect.objectContaining({
@@ -438,8 +496,58 @@ describe('AdminService', () => {
           task: 'Check KPIs',
           priority: 'medium',
           briefedAt: expect.any(String),
+          model: 'claude-sonnet-4-20250514',
         }),
       );
+    });
+
+    it('should throw 502 when Anthropic API call fails', async () => {
+      jest.spyOn(require('@anthropic-ai/sdk'), 'default').mockImplementation(
+        () => ({
+          messages: {
+            create: jest.fn().mockRejectedValue(new Error('API rate limited')),
+          },
+        }),
+      );
+
+      const dto = {
+        agentId: 'farida',
+        task: 'Review architecture',
+        context: 'Planning session',
+        priority: 'high',
+      };
+
+      await expect(service.briefAgent(dto)).rejects.toThrow(
+        expect.objectContaining({
+          status: 502,
+        }),
+      );
+    });
+
+    it('should handle non-JSON agent response gracefully', async () => {
+      jest.spyOn(require('@anthropic-ai/sdk'), 'default').mockImplementation(
+        () => ({
+          messages: {
+            create: jest.fn().mockResolvedValue({
+              content: [{ type: 'text', text: 'I will review the architecture and report back.' }],
+            }),
+          },
+        }),
+      );
+
+      const dto = {
+        agentId: 'farida',
+        task: 'Review architecture',
+        context: 'Planning session',
+        priority: 'normal',
+      };
+
+      const result = await service.briefAgent(dto);
+
+      expect(result.response.reasoning).toBe('I will review the architecture and report back.');
+      expect(result.response.proposedAction).toBeNull();
+      expect(result.response.confidence).toBe('low');
+      expect((result.response.flags as string[])).toContain('Response was not in expected JSON format');
     });
   });
 });

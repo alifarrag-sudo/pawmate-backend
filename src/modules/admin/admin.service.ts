@@ -1,5 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+  BadGatewayException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import Anthropic from '@anthropic-ai/sdk';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
 import {
@@ -44,8 +51,14 @@ function startOfPeriod(period: string): Date {
   return new Date(start.getTime() - CAIRO_OFFSET_MS);
 }
 
+const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514';
+const ANTHROPIC_MAX_TOKENS = 2000;
+const CC_API_BASE = 'https://command-centr.netlify.app/api';
+
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private prisma: PrismaService,
     private redis: RedisService,
@@ -638,34 +651,150 @@ export class AdminService {
       );
     }
 
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new ServiceUnavailableException({
+        error: 'anthropic_not_configured',
+        message: 'ANTHROPIC_API_KEY is not set. Agent briefing requires a configured API key.',
+      });
+    }
+
     const agentName = AGENT_NAMES[agentId];
+    const systemPrompt = await this.getAgentSystemPrompt(agentId, agentName);
 
-    // Simulated response — no real Anthropic API call
-    const response = {
-      reasoning: `Acknowledged task "${dto.task}" with priority ${dto.priority}. Context analyzed: "${dto.context.slice(0, 120)}..."`,
-      proposedAction: `${agentName} will review and provide recommendations for: ${dto.task}`,
-      params: {
-        taskReceived: dto.task,
+    const userMessage = this.buildAgentPrompt(dto.task, dto.context, agentId, dto.priority);
+
+    try {
+      const anthropic = new Anthropic({ apiKey });
+
+      const message = await anthropic.messages.create({
+        model: ANTHROPIC_MODEL,
+        max_tokens: ANTHROPIC_MAX_TOKENS,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      });
+
+      const rawText =
+        message.content
+          .filter((b) => b.type === 'text')
+          .map((b) => (b as { type: 'text'; text: string }).text)
+          .join('\n') || '';
+
+      const response = this.parseAgentResponse(rawText, dto.task, dto.priority);
+      const briefedAt = new Date().toISOString();
+
+      this.eventEmitter.emit('admin.agent_briefed', {
+        agentId,
+        agentName,
+        task: dto.task,
         priority: dto.priority,
-        estimatedResponseTime: '5 minutes',
-      },
-    };
+        briefedAt,
+        model: ANTHROPIC_MODEL,
+      });
 
-    const briefedAt = new Date().toISOString();
+      return { agentId, agentName, response, briefedAt };
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Agent brief failed for ${agentId}: ${errMsg}`);
 
-    this.eventEmitter.emit('admin.agent_briefed', {
-      agentId,
-      agentName,
-      task: dto.task,
-      priority: dto.priority,
-      briefedAt,
-    });
+      // Re-throw known NestJS exceptions as-is
+      if (error instanceof ServiceUnavailableException || error instanceof NotFoundException) {
+        throw error;
+      }
 
+      throw new BadGatewayException({
+        error: 'agent_unavailable',
+        message: errMsg,
+      });
+    }
+  }
+
+  // ── Agent brief helpers ──────────────────────────────────────────────────────
+
+  /** Fetch agent system prompt from Command Center, fallback to default */
+  private async getAgentSystemPrompt(agentId: string, agentName: string): Promise<string> {
+    const fallback = `You are ${agentName}, a PawMateHub autonomous agent. You assist the founding team with tasks in your domain. Always provide structured, actionable analysis.`;
+
+    try {
+      const res = await fetch(`${CC_API_BASE}/agents/${agentId}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!res.ok) return fallback;
+
+      const data = (await res.json()) as Record<string, unknown>;
+      const systemPrompt = data.system_prompt ?? data.systemPrompt;
+
+      return typeof systemPrompt === 'string' && systemPrompt.length > 0
+        ? systemPrompt
+        : fallback;
+    } catch {
+      this.logger.debug(`Command Center unreachable for agent ${agentId}, using fallback prompt`);
+      return fallback;
+    }
+  }
+
+  /** Build the user message for the agent briefing */
+  private buildAgentPrompt(task: string, context: string, agentId: string, priority: string): string {
+    return [
+      `## Agent Briefing — ${agentId}`,
+      `**Priority:** ${priority}`,
+      '',
+      `### Task`,
+      task,
+      '',
+      `### Context`,
+      context,
+      '',
+      `### Response Format`,
+      'Respond with a JSON object containing:',
+      '```json',
+      '{',
+      '  "reasoning": "Your analysis and thought process",',
+      '  "proposed_action": "What you recommend doing (or null if information-only)",',
+      '  "action_type": "The type of action (e.g. approve, reject, investigate, report, none)",',
+      '  "action_params": { "key": "value pairs relevant to the action" },',
+      '  "confidence": "high | medium | low",',
+      '  "flags": ["any concerns or caveats"]',
+      '}',
+      '```',
+      '',
+      'Return ONLY the JSON object, no surrounding markdown or explanation.',
+    ].join('\n');
+  }
+
+  /** Parse the agent response, handling non-JSON gracefully */
+  private parseAgentResponse(
+    rawText: string,
+    task: string,
+    priority: string,
+  ): Record<string, unknown> {
+    // Try to extract JSON from the response
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          reasoning: parsed.reasoning ?? parsed.analysis ?? rawText,
+          proposedAction: parsed.proposed_action ?? parsed.proposedAction ?? null,
+          actionType: parsed.action_type ?? parsed.actionType ?? 'none',
+          params: parsed.action_params ?? parsed.actionParams ?? parsed.params ?? {},
+          confidence: parsed.confidence ?? 'medium',
+          flags: parsed.flags ?? [],
+        };
+      } catch {
+        // fall through to unstructured handling
+      }
+    }
+
+    // Unstructured response fallback
     return {
-      agentId,
-      agentName,
-      response,
-      briefedAt,
+      reasoning: rawText,
+      proposedAction: null,
+      actionType: 'none',
+      params: { taskReceived: task, priority },
+      confidence: 'low',
+      flags: ['Response was not in expected JSON format'],
     };
   }
 }
