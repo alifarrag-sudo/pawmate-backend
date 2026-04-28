@@ -9,6 +9,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
@@ -31,6 +32,7 @@ export class AuthController {
   // ─── Public: Registration & Login ─────────────────────────────────────────
 
   @Public()
+  @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('register')
   @ApiOperation({ summary: 'Register with email + password (email-first, no OTP gate)' })
   async register(@Body() dto: RegisterDto) {
@@ -38,6 +40,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in with email + password' })
@@ -46,6 +49,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('social')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Sign in / register with Google or Facebook OAuth token' })
@@ -56,6 +60,7 @@ export class AuthController {
   // ─── Public: Password Reset ────────────────────────────────────────────────
 
   @Public()
+  @Throttle({ short: { ttl: 1000, limit: 2 }, medium: { ttl: 60000, limit: 5 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset link via email' })
@@ -64,6 +69,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle({ short: { ttl: 1000, limit: 2 }, medium: { ttl: 60000, limit: 5 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using token from email link' })

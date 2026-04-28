@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
+import { v4 as uuidv4 } from 'uuid';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -17,6 +18,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const requestId: string =
+      (request as any).requestId ?? request.headers['x-request-id'] ?? uuidv4();
 
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
     let errorCode = 'INTERNAL_ERROR';
@@ -53,25 +58,46 @@ export class AllExceptionsFilter implements ExceptionFilter {
         errorCode = 'RECORD_NOT_FOUND';
         message = 'The requested record was not found';
       } else {
-        this.logger.error(`Prisma error ${exception.code}: ${exception.message}`);
+        this.logger.error(
+          `[${requestId}] Prisma error ${exception.code}: ${exception.message}`,
+        );
         errorCode = `PRISMA_${exception.code}`;
-        message = exception.message.split('\n').slice(0, 2).join(' ').trim();
-        details = { prismaCode: exception.code, meta: exception.meta };
+        message = isProduction
+          ? 'A database error occurred'
+          : exception.message.split('\n').slice(0, 2).join(' ').trim();
+        if (!isProduction) {
+          details = { prismaCode: exception.code, meta: exception.meta };
+        }
       }
     } else if (exception instanceof Prisma.PrismaClientValidationError) {
-      this.logger.error(`Prisma validation error: ${exception.message}`);
+      statusCode = HttpStatus.BAD_REQUEST;
       errorCode = 'PRISMA_VALIDATION_ERROR';
-      message = exception.message.split('\n').filter(Boolean).slice(-3).join(' ').trim();
+      this.logger.error(
+        `[${requestId}] Prisma validation error: ${exception.message}`,
+      );
+      message = isProduction
+        ? 'Invalid request data'
+        : exception.message
+            .split('\n')
+            .filter(Boolean)
+            .slice(-3)
+            .join(' ')
+            .trim();
     } else if (exception instanceof Error) {
-      this.logger.error(`Unhandled error: ${exception.message}`, exception.stack);
+      this.logger.error(
+        `[${requestId}] Unhandled error: ${exception.message}`,
+        exception.stack,
+      );
       errorCode = 'INTERNAL_ERROR';
-      message = exception.message?.slice(0, 200) || 'An unexpected error occurred';
+      message = isProduction
+        ? 'An unexpected error occurred'
+        : (exception.message?.slice(0, 200) || 'An unexpected error occurred');
     }
 
     // Log server errors (don't log 4xx in production)
     if (statusCode >= 500) {
       this.logger.error(
-        `[${request.method}] ${request.url} — ${statusCode}: ${message}`,
+        `[${requestId}] [${request.method}] ${request.url} — ${statusCode}: ${message}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -84,6 +110,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
         details,
         timestamp: new Date().toISOString(),
         path: request.url,
+        request_id: requestId,
       },
     });
   }

@@ -1,4 +1,5 @@
-import { Controller, Get, VERSION_NEUTRAL } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res, VERSION_NEUTRAL } from '@nestjs/common';
+import { Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
@@ -15,7 +16,9 @@ export class HealthController {
 
   @Get()
   @Public()
-  async check() {
+  async check(@Res() res: Response) {
+    const start = Date.now();
+
     const checks = await Promise.allSettled([
       this.prisma.$queryRaw`SELECT 1`,
       this.redis.get('health:ping').then(() => 'pong'),
@@ -23,11 +26,17 @@ export class HealthController {
 
     const db = checks[0].status === 'fulfilled' ? 'ok' : 'error';
     const cache = checks[1].status === 'fulfilled' ? 'ok' : 'error';
-    const status = db === 'ok' && cache === 'ok' ? 'ok' : 'degraded';
+    const allHealthy = db === 'ok' && cache === 'ok';
+    const status = allHealthy ? 'ok' : 'degraded';
 
-    return {
+    const memoryUsage = process.memoryUsage();
+
+    const body = {
       status,
       timestamp: new Date().toISOString(),
+      response_time_ms: Date.now() - start,
+      memory_usage_mb: Math.round((memoryUsage.rss / 1024 / 1024) * 100) / 100,
+      uptime_seconds: Math.round(process.uptime()),
       services: {
         database: db,
         cache,
@@ -43,5 +52,10 @@ export class HealthController {
       },
       version: process.env.npm_package_version || '1.0.0',
     };
+
+    const httpStatus = allHealthy
+      ? HttpStatus.OK
+      : HttpStatus.SERVICE_UNAVAILABLE;
+    res.status(httpStatus).json(body);
   }
 }

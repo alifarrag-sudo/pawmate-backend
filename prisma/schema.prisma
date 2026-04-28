@@ -980,6 +980,7 @@ model PetFriendProfile {
   @@index([lat, lng])
   @@index([isActive, isVerified])
   @@index([status])
+  @@index([status, addressCity])
   @@map("petfriend_profiles")
 }
 
@@ -1834,6 +1835,8 @@ model Booking {
   @@index([trainerProfileId])
   @@index([paymentStatus])
   @@index([parentId, status])
+  @@index([status, createdAt])
+  @@index([parentId, createdAt])
   @@map("bookings")
 }
 

@@ -1,7 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -26,10 +27,20 @@ async function bootstrap() {
     }),
   );
 
+  // Response compression — gzip/brotli for all responses
+  app.use(compression());
+
   // CORS — allow specific origins; mobile apps send no origin so they always pass
   const allowedOrigins = process.env.ALLOWED_ORIGINS
     ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
-    : ['http://localhost:3000', 'http://localhost:19006'];
+    : [
+        'http://localhost:3000',
+        'http://localhost:19006',
+        'https://pawmatehub.com',
+        'https://pawmateegypt.com',
+        'https://pawmatehub-web.netlify.app',
+        'https://command-centr.netlify.app',
+      ];
 
   app.enableCors({
     origin: (origin, callback) => {
@@ -104,10 +115,23 @@ async function bootstrap() {
 
   // Health endpoint served by HealthController at GET /api/v1/health
 
+  // Graceful shutdown — allow in-flight requests to finish before stopping
+  app.enableShutdownHooks();
+
+  const logger = new Logger('Bootstrap');
   const port = process.env.PORT || 3000;
   await app.listen(port, '0.0.0.0');
-  console.log(`PawMate API running on port ${port}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.log(`PawMate API running on port ${port}`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  // Handle OS signals for graceful shutdown (Railway sends SIGTERM)
+  const shutdown = async (signal: string) => {
+    logger.warn(`Received ${signal} — shutting down gracefully...`);
+    await app.close();
+    process.exit(0);
+  };
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 bootstrap();

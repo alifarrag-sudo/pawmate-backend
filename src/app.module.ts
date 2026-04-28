@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { ScheduleModule } from '@nestjs/schedule';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
@@ -45,6 +46,7 @@ import { GroomerModule } from './modules/groomer/groomer.module';
 import { SupportModule } from './modules/support/support.module';
 import { InvestorModule } from './modules/investor/investor.module';
 import { WebApplicationModule } from './modules/web-application/web-application.module';
+import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
   imports: [
@@ -116,5 +118,13 @@ import { WebApplicationModule } from './modules/web-application/web-application.
     InvestorModule,
     WebApplicationModule,
   ],
+  providers: [
+    // Global rate-limit guard — applies ThrottlerModule config to every route
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}
