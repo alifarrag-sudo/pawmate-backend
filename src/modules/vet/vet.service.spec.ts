@@ -149,12 +149,15 @@ describe('Vet Module', () => {
   // ── Consultation creation encrypts sensitive fields ─────────────────────────
 
   describe('ConsultationService.createConsultation', () => {
-    const mockVetProfile = { id: 'vet-1', businessProfileId: 'biz-1' };
+    const mockVetProfile = { id: 'vet-1', businessProfileId: 'biz-1', status: 'APPROVED' };
 
     beforeEach(() => {
       prisma.vetProfile.findUnique.mockResolvedValue(mockVetProfile);
       prisma.teamMember.findUnique.mockResolvedValue({
         id: 'tm-1', businessId: 'biz-1', userId: mockUserId, role: 'OWNER', status: 'ACTIVE',
+      });
+      prisma.pet.findUnique.mockResolvedValue({
+        id: 'pet-1', name: 'Buddy', species: 'dog', ownerId: 'parent-1',
       });
     });
 

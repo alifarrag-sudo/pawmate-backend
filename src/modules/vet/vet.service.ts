@@ -333,7 +333,14 @@ export class VetService {
       throw new NotFoundException('Vet clinic not found');
     }
 
-    return profile;
+    // Defensive filter — Prisma where clause handles this at DB level,
+    // but we double-check in case the query is mocked or the DB driver
+    // doesn't enforce nested where correctly.
+    const safeAffiliations = (profile.affiliations ?? []).filter(
+      (a: { verificationStatus?: string }) => a.verificationStatus === 'VERIFIED',
+    );
+
+    return { ...profile, affiliations: safeAffiliations };
   }
 
   // ── Search ──────────────────────────────────────────────────────────────────

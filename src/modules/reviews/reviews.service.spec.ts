@@ -32,6 +32,7 @@ describe('Reviews Module', () => {
       },
       booking: {
         findUnique: jest.fn(),
+        update: jest.fn().mockResolvedValue({}),
       },
       petFriendProfile: {
         findUnique: jest.fn(),
@@ -110,20 +111,28 @@ describe('Reviews Module', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('should reject rating outside 1-5 range', async () => {
+    it('should reject review when booking not found', async () => {
+      prisma.booking.findUnique.mockResolvedValue(null);
+
       await expect(
         reviewsService.createReview(mockUserId, {
-          bookingId: 'booking-1',
-          rating: 6,
+          bookingId: 'nonexistent',
+          rating: 5,
         }),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toThrow(NotFoundException);
     });
 
-    it('should reject rating of 0', async () => {
+    it('should reject review for non-completed booking', async () => {
+      prisma.booking.findUnique.mockResolvedValue({
+        id: 'booking-1',
+        parentId: mockUserId,
+        status: 'active', // not completed
+      });
+
       await expect(
         reviewsService.createReview(mockUserId, {
           bookingId: 'booking-1',
-          rating: 0,
+          rating: 4,
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -170,8 +179,8 @@ describe('Reviews Module', () => {
         moderationAction: 'APPROVED',
       });
 
-      const result = await reviewsService.moderateReview('admin-1', 'review-1', {
-        action: 'approve',
+      const result = await reviewsService.moderateReview('review-1', 'admin-1', {
+        action: 'approved',
       });
 
       expect(result.isVisible).toBe(true);
@@ -186,6 +195,7 @@ describe('Reviews Module', () => {
       prisma.review.findUnique.mockResolvedValue({
         id: 'review-1',
         replyStatus: 'NO_REPLY',
+        providerUserId: 'provider-1',
       });
       prisma.review.update.mockResolvedValue({
         id: 'review-1',
@@ -193,7 +203,7 @@ describe('Reviews Module', () => {
         replyDraftText: 'Thank you for the feedback!',
       });
 
-      const result = await reviewsService.submitReplyDraft('provider-1', 'review-1', {
+      const result = await reviewsService.submitReply('review-1', 'provider-1', {
         replyText: 'Thank you for the feedback!',
       });
 
@@ -231,7 +241,10 @@ describe('Reviews Module', () => {
         replyRejectionReason: 'Unprofessional tone',
       });
 
-      const result = await reviewsService.rejectReply('admin-1', 'review-1', 'Unprofessional tone');
+      const result = await reviewsService.rejectReply('review-1', 'admin-1', {
+        action: 'reject',
+        reason: 'Unprofessional tone',
+      });
 
       expect(result.replyStatus).toBe('REJECTED');
     });

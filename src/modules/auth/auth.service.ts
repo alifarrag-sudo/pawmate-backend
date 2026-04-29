@@ -584,8 +584,12 @@ export class AuthService {
         trainerProfile: {
           include: { offerings: { where: { isActive: true } } },
         },
-        kennelProfile: true,
-        petHotelProfile: true,
+        businessProfile: {
+          include: {
+            kennelProfile: true,
+            petHotelProfile: true,
+          },
+        },
         pets: { where: { isActive: true } },
       },
     });
@@ -598,8 +602,8 @@ export class AuthService {
       profiles: {
         petFriend: user.petFriendProfile,
         trainer: user.trainerProfile,
-        kennel: user.kennelProfile,
-        petHotel: user.petHotelProfile,
+        kennel: user.businessProfile?.kennelProfile ?? null,
+        petHotel: user.businessProfile?.petHotelProfile ?? null,
       },
     };
   }
