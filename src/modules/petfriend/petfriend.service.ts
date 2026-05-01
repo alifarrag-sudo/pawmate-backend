@@ -119,14 +119,11 @@ export class PetFriendService {
       throw new ForbiddenException('Cannot update profile while suspended.');
     }
 
-    // Validate rates against PricingBounds if any rate is being changed
+    // Sanity-validate rates (rate > 0 AND rate <= 99,999). No platform-enforced
+    // floor/ceiling beyond typo prevention — providers price freely.
     const rateChanges = this.extractRateChanges(dto);
-    if (Object.keys(rateChanges).length > 0) {
-      await this.validateRatesAgainstBounds(
-        rateChanges,
-        Number(profile.avgRating),
-        profile.totalBookings,
-      );
+    for (const [serviceType, rate] of Object.entries(rateChanges)) {
+      this.assertSaneRate(rate, serviceType);
     }
 
     const updateData: Record<string, unknown> = {};
@@ -692,38 +689,35 @@ export class PetFriendService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Private: validate proposed rates against PricingBounds in DB
+  // Private: sanity-check a single rate value. Rate must be a positive whole
+  // number ≤ 99,999 EGP. No platform-enforced floor/ceiling beyond that — the
+  // legacy PricingBounds tier system was removed in the service taxonomy
+  // restructure.
   // ──────────────────────────────────────────────────────────────────────────
-  private async validateRatesAgainstBounds(
-    rateChanges: Record<string, number>,
-    avgRating: number,
-    totalBookings: number,
-  ) {
-    const serviceTypes = Object.keys(rateChanges);
-    const bounds = await this.prisma.pricingBounds.findMany({
-      where: { serviceType: { in: serviceTypes } },
-    });
-
-    const elite = isEliteTier(avgRating, totalBookings);
-
-    for (const [serviceType, proposedRate] of Object.entries(rateChanges)) {
-      const bound = bounds.find(b => b.serviceType === serviceType);
-      if (!bound) continue; // No bound configured for this service type — skip
-
-      const maxEgp = elite ? bound.eliteMaxEgp : bound.defaultMaxEgp;
-
-      if (proposedRate < bound.minEgp || proposedRate > maxEgp) {
-        throw new BadRequestException({
-          error: 'PRICE_OUT_OF_RANGE',
-          message:
-            `Rate for ${serviceType} must be between ${bound.minEgp} and ${maxEgp} EGP ` +
-            `(${elite ? 'elite' : 'standard'} tier).`,
-          serviceType,
-          min: bound.minEgp,
-          max: maxEgp,
-          proposed: proposedRate,
-        });
-      }
+  private assertSaneRate(rate: number, fieldName: string): void {
+    if (!Number.isFinite(rate) || !Number.isInteger(rate)) {
+      throw new BadRequestException({
+        error: 'INVALID_RATE',
+        message: `Rate for ${fieldName} must be a whole-number EGP value`,
+        fieldName,
+        proposed: rate,
+      });
+    }
+    if (rate < 1) {
+      throw new BadRequestException({
+        error: 'INVALID_RATE',
+        message: `Rate for ${fieldName} must be greater than 0 EGP`,
+        fieldName,
+        proposed: rate,
+      });
+    }
+    if (rate > 99_999) {
+      throw new BadRequestException({
+        error: 'INVALID_RATE',
+        message: `Rate for ${fieldName} cannot exceed 99,999 EGP`,
+        fieldName,
+        proposed: rate,
+      });
     }
   }
 }

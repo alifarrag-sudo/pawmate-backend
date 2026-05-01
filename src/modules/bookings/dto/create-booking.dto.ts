@@ -7,6 +7,9 @@ import {
   IsLongitude,
   IsString,
   IsOptional,
+  IsInt,
+  Min,
+  Max,
   MaxLength,
   ArrayMinSize,
   ArrayMaxSize,
@@ -70,4 +73,37 @@ export class CreateBookingDto {
   @ApiProperty({ enum: ['card', 'mobile_wallet', 'fawry', 'platform_wallet'] })
   @IsEnum(['card', 'mobile_wallet', 'fawry', 'platform_wallet'])
   paymentMethod: string;
+
+  // ── New per-service pricing inputs ──────────────────────────────
+  // The pricing engine routes on serviceType. These are optional at the DTO
+  // level (so legacy clients still parse) but the bookings service rejects
+  // requests where the field required for the chosen serviceType is missing.
+
+  @ApiPropertyOptional({
+    description: 'Number of nights for BOARDING bookings (≥ 1).',
+    minimum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  numberOfNights?: number;
+
+  @ApiPropertyOptional({
+    description: 'Number of hours for WALKING bookings (≥ provider minimum).',
+    minimum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(24)
+  numberOfHours?: number;
+
+  @ApiPropertyOptional({
+    description: 'Session length for DAY_CARE bookings.',
+    enum: ['SIX_HOUR', 'EIGHT_HOUR'],
+  })
+  @IsOptional()
+  @IsEnum(['SIX_HOUR', 'EIGHT_HOUR'])
+  sessionType?: 'SIX_HOUR' | 'EIGHT_HOUR';
 }

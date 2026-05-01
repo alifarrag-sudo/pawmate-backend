@@ -12,6 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../common/services/redis.service';
 import { MatchingService } from './matching.service';
 import { PricingService } from './pricing.service';
+import { PricingService as TaxonomyPricingService, BookingPriceBreakdown } from '../pricing/pricing.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CareLogService } from '../care-log/care-log.service';
 
@@ -24,9 +25,150 @@ export class BookingsService {
     private redis: RedisService,
     private matching: MatchingService,
     private pricing: PricingService,
+    private taxonomyPricing: TaxonomyPricingService,
     private eventEmitter: EventEmitter2,
     private careLogService: CareLogService,
   ) {}
+
+  /**
+   * Run the new BOARDING/WALKING/DAY_CARE pricing engine when the booking
+   * uses one of those types. Returns null for legacy types so the caller
+   * can fall back to the older `pricing.calculate(...)` flow.
+   *
+   * Throws BadRequestException if the DTO is missing the field required
+   * for the chosen serviceType (e.g. WALKING without numberOfHours).
+   */
+  private runTaxonomyPricing(
+    dto: CreateBookingDto,
+    sitterProfile: any,
+  ): BookingPriceBreakdown | null {
+    const COMMISSION_RATE = 15;
+
+    switch (dto.serviceType) {
+      case 'BOARDING': {
+        if (dto.numberOfNights == null) {
+          throw new BadRequestException({
+            error: 'MISSING_NIGHTS',
+            message: 'numberOfNights is required for BOARDING bookings.',
+          });
+        }
+        const perNight = sitterProfile.boardingPerNightRateEgp;
+        if (perNight == null) {
+          throw new BadRequestException({
+            error: 'PROVIDER_RATE_MISSING',
+            message: 'This provider has not set a per-night rate for boarding.',
+          });
+        }
+        return this.taxonomyPricing.calculateBookingPrice({
+          serviceType: 'BOARDING',
+          numberOfNights: dto.numberOfNights,
+          perNightRateEgp: perNight,
+        });
+      }
+      case 'WALKING': {
+        if (dto.numberOfHours == null) {
+          throw new BadRequestException({
+            error: 'MISSING_HOURS',
+            message: 'numberOfHours is required for WALKING bookings.',
+          });
+        }
+        const perHour = sitterProfile.walkingPerHourRateEgp;
+        if (perHour == null) {
+          throw new BadRequestException({
+            error: 'PROVIDER_RATE_MISSING',
+            message: 'This provider has not set a per-hour walking rate.',
+          });
+        }
+        return this.taxonomyPricing.calculateBookingPrice({
+          serviceType: 'WALKING',
+          numberOfHours: dto.numberOfHours,
+          perHourRateEgp: perHour,
+          minimumHours: sitterProfile.walkingMinimumHours ?? 1,
+        });
+      }
+      case 'DAY_CARE': {
+        if (dto.sessionType == null) {
+          throw new BadRequestException({
+            error: 'MISSING_SESSION_TYPE',
+            message: 'sessionType (SIX_HOUR or EIGHT_HOUR) is required for DAY_CARE bookings.',
+          });
+        }
+        const six = sitterProfile.daycareSixHourRateEgp;
+        const eight = sitterProfile.daycareEightHourRateEgp;
+        if (six == null || eight == null) {
+          throw new BadRequestException({
+            error: 'PROVIDER_RATE_MISSING',
+            message: 'This provider has not set day-care session rates.',
+          });
+        }
+        return this.taxonomyPricing.calculateBookingPrice({
+          serviceType: 'DAY_CARE',
+          sessionType: dto.sessionType,
+          sixHourRateEgp: six,
+          eightHourRateEgp: eight,
+        });
+      }
+      default:
+        return null; // legacy types fall through to old pricing engine
+    }
+  }
+
+  /**
+   * Persist serviceCategory + per-type extras (checkoutDate for BOARDING,
+   * sessionType + sessionEndTime for DAY_CARE) on the new booking row.
+   * These feed the late-pickup engine and the new browse-tab category filters.
+   */
+  private buildTaxonomyExtras(
+    dto: CreateBookingDto,
+    start: Date,
+    end: Date,
+  ): Record<string, unknown> {
+    switch (dto.serviceType) {
+      case 'BOARDING':
+        return {
+          serviceCategory: 'SERVICES',
+          // checkoutDate is the calendar day of `requestedEnd` — late fees
+          // accrue after 14:00 Cairo on this date.
+          checkoutDate: new Date(end.getFullYear(), end.getMonth(), end.getDate()),
+        };
+      case 'WALKING':
+        return { serviceCategory: 'SERVICES' };
+      case 'DAY_CARE': {
+        const sessionType = dto.sessionType ?? 'SIX_HOUR';
+        const hours = sessionType === 'SIX_HOUR' ? 6 : 8;
+        return {
+          serviceCategory: 'SERVICES',
+          sessionType,
+          sessionEndTime: new Date(start.getTime() + hours * 60 * 60 * 1000),
+        };
+      }
+      case 'KENNEL':
+      case 'PET_HOTEL':
+      case 'TRAINING':
+        return { serviceCategory: 'PROFESSIONAL_SERVICES' };
+      case 'VET':
+      case 'GROOMING':
+        return { serviceCategory: 'PET_CARE_SERVICES' };
+      case 'PET_SHOP':
+        return { serviceCategory: 'MARKETPLACE' };
+      default:
+        return {}; // legacy serviceType — leave serviceCategory null
+    }
+  }
+
+  /** Translate a taxonomy-pricing breakdown into the legacy commission shape. */
+  private buildCommissionFromTaxonomy(breakdown: BookingPriceBreakdown) {
+    const commissionRate = 15;
+    const commissionAmount = Math.ceil(breakdown.total * (commissionRate / 100));
+    return {
+      basePrice: breakdown.base,
+      commissionRate,
+      commissionAmount,
+      totalPrice: breakdown.total,
+      sitterPayout: breakdown.total - commissionAmount,
+      currency: 'EGP',
+    };
+  }
 
   async createBooking(ownerId: string, dto: CreateBookingDto) {
     // 1. Validate future dates
@@ -121,14 +263,19 @@ export class BookingsService {
       });
     }
 
-    // 9. Calculate price
-    const pricing = this.pricing.calculate({
-      bookingType: dto.bookingType,
-      startTime: start,
-      endTime: end,
-      petCount: pets.length,
-      sitterProfile: sitterProfile as any,
-    });
+    // 9. Calculate price — prefer the new taxonomy engine for
+    // BOARDING/WALKING/DAY_CARE, fall back to the legacy duration-based engine
+    // for hourly/daily/weekly/monthly bookings on legacy service types.
+    const taxonomyBreakdown = this.runTaxonomyPricing(dto, sitterProfile as any);
+    const pricing = taxonomyBreakdown
+      ? this.buildCommissionFromTaxonomy(taxonomyBreakdown)
+      : this.pricing.calculate({
+          bookingType: dto.bookingType,
+          startTime: start,
+          endTime: end,
+          petCount: pets.length,
+          sitterProfile: sitterProfile as any,
+        });
 
     // 10. Create pet snapshots (frozen pet data)
     const petSnapshots = pets.map((pet) => ({
@@ -139,6 +286,11 @@ export class BookingsService {
       weightKg: pet.weightKg?.toString(),
       profilePhoto: pet.profilePhoto,
     }));
+
+    // 10b. Derive new taxonomy fields (serviceCategory, checkoutDate, sessionType,
+    // sessionEndTime) from the DTO + computed booking start/end. These power the
+    // late-pickup engine and the new browse-tab category filters.
+    const taxonomyExtras = this.buildTaxonomyExtras(dto, start, end);
 
     // 11. Create booking — use connect pattern to satisfy Prisma's BookingCreateInput type
     const booking = await this.prisma.booking.create({
@@ -163,6 +315,7 @@ export class BookingsService {
         specialInstructions: dto.specialInstructions,
         petSnapshot: petSnapshots,
         reviewDeadline: new Date(end.getTime() + 14 * 24 * 60 * 60 * 1000),
+        ...taxonomyExtras,
         pets: {
           create: dto.petIds.map((petId) => ({ pet: { connect: { id: petId } } })),
         },

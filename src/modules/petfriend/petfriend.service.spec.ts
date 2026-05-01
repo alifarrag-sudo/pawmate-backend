@@ -69,9 +69,6 @@ function makePrismaMock() {
       findUnique: jest.fn(),
       update: jest.fn(),
     },
-    pricingBounds: {
-      findMany: jest.fn(),
-    },
     petFriendPayout: {
       create: jest.fn(),
     },
@@ -268,59 +265,42 @@ describe('PetFriendService', () => {
   // 3. Pricing guard in updateProfile
   // ────────────────────────────────────────────────────────────────────────────
 
-  describe('updateProfile — pricing guard', () => {
-    it('rejects ratePerHour below minEgp (50)', async () => {
-      // Arrange
+  describe('updateProfile — pricing sanity bounds', () => {
+    // Platform tier-based PricingBounds were retired in the service taxonomy
+    // restructure. Today we only sanity-check that rates are positive whole
+    // numbers ≤ 99,999 EGP. Providers price freely.
+
+    it('rejects ratePerHour <= 0', async () => {
       const existingProfile = makeProfile({
         status: PetFriendStatus.PENDING_DOCS,
         avgRating: 4.0,
         totalBookings: 5,
       });
       prisma.petFriendProfile.findUnique.mockResolvedValue(existingProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([
-        {
-          serviceType: 'HOUR',
-          minEgp: 50,
-          defaultMaxEgp: 200,
-          eliteMaxEgp: 350,
-        },
-      ]);
 
-      // Act & Assert
       await expect(
-        service.updateProfile('user-1', { ratePerHour: 30 }),
+        service.updateProfile('user-1', { ratePerHour: 0 }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('rejects ratePerHour above defaultMaxEgp (200) for standard provider', async () => {
-      // Arrange
+    it('rejects ratePerHour > 99,999', async () => {
       const existingProfile = makeProfile({
         status: PetFriendStatus.PENDING_DOCS,
         avgRating: 4.0,
         totalBookings: 5,
       });
       prisma.petFriendProfile.findUnique.mockResolvedValue(existingProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([
-        {
-          serviceType: 'HOUR',
-          minEgp: 50,
-          defaultMaxEgp: 200,
-          eliteMaxEgp: 350,
-        },
-      ]);
 
-      // Act & Assert
       await expect(
-        service.updateProfile('user-1', { ratePerHour: 250 }),
+        service.updateProfile('user-1', { ratePerHour: 100_000 }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('allows ratePerHour above defaultMaxEgp when provider is elite', async () => {
-      // Arrange — elite: rating 4.7, 25 bookings
+    it('accepts a previously-out-of-range rate (e.g. 280 EGP/hr) — no platform cap', async () => {
       const existingProfile = makeProfile({
         status: PetFriendStatus.PENDING_DOCS,
-        avgRating: 4.7,
-        totalBookings: 25,
+        avgRating: 4.0,
+        totalBookings: 5,
       });
       const updatedProfile = makeProfile({
         ...existingProfile,
@@ -328,47 +308,34 @@ describe('PetFriendService', () => {
       });
 
       prisma.petFriendProfile.findUnique
-        .mockResolvedValueOnce(existingProfile)  // first call in updateProfile
-        .mockResolvedValueOnce(null);            // checkAndAutoApprove user lookup stub
-      prisma.pricingBounds.findMany.mockResolvedValue([
-        {
-          serviceType: 'HOUR',
-          minEgp: 50,
-          defaultMaxEgp: 200,
-          eliteMaxEgp: 350,
-        },
-      ]);
+        .mockResolvedValueOnce(existingProfile)
+        .mockResolvedValueOnce(null);
       prisma.petFriendProfile.update.mockResolvedValue(updatedProfile);
       prisma.user.findUnique.mockResolvedValue(makeUser());
 
-      // Act — should not throw
       const result = await service.updateProfile('user-1', { ratePerHour: 280 });
-
-      // Assert
       expect(result.ratePerHour).toBe(280);
     });
 
-    it('rejects ratePerHour above eliteMaxEgp even for elite provider', async () => {
-      // Arrange — elite but proposed rate exceeds elite cap (350)
+    it('accepts an unusually high but valid rate (99,999 EGP)', async () => {
       const existingProfile = makeProfile({
         status: PetFriendStatus.PENDING_DOCS,
-        avgRating: 4.7,
-        totalBookings: 25,
+        avgRating: 4.0,
+        totalBookings: 5,
       });
-      prisma.petFriendProfile.findUnique.mockResolvedValue(existingProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([
-        {
-          serviceType: 'HOUR',
-          minEgp: 50,
-          defaultMaxEgp: 200,
-          eliteMaxEgp: 350,
-        },
-      ]);
+      const updatedProfile = makeProfile({
+        ...existingProfile,
+        ratePerHour: 99_999,
+      });
 
-      // Act & Assert
-      await expect(
-        service.updateProfile('user-1', { ratePerHour: 400 }),
-      ).rejects.toThrow(BadRequestException);
+      prisma.petFriendProfile.findUnique
+        .mockResolvedValueOnce(existingProfile)
+        .mockResolvedValueOnce(null);
+      prisma.petFriendProfile.update.mockResolvedValue(updatedProfile);
+      prisma.user.findUnique.mockResolvedValue(makeUser());
+
+      const result = await service.updateProfile('user-1', { ratePerHour: 99_999 });
+      expect(result.ratePerHour).toBe(99_999);
     });
   });
 
@@ -543,7 +510,6 @@ describe('PetFriendService', () => {
       });
 
       prisma.petFriendProfile.findUnique.mockResolvedValue(existingProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([]); // no pricing bounds configured
       prisma.petFriendProfile.update.mockResolvedValue(fullyCompleteProfile);
       prisma.user.findUnique.mockResolvedValue(userWithDocs);
 
@@ -582,7 +548,6 @@ describe('PetFriendService', () => {
       const userWithNoDocs = makeUser();
 
       prisma.petFriendProfile.findUnique.mockResolvedValue(incompleteProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([]);
       prisma.petFriendProfile.update.mockResolvedValue(incompleteProfile);
       prisma.user.findUnique.mockResolvedValue(userWithNoDocs);
 
@@ -609,7 +574,6 @@ describe('PetFriendService', () => {
       });
 
       prisma.petFriendProfile.findUnique.mockResolvedValue(approvedProfile);
-      prisma.pricingBounds.findMany.mockResolvedValue([]);
       prisma.petFriendProfile.update.mockResolvedValue(approvedProfile);
 
       // Act

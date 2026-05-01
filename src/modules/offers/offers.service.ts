@@ -8,7 +8,11 @@ import {
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { getPriceRange, computeSitterTier } from '../../common/utils/pricing.util';
+// Sanity bounds — providers and parents may name any price > 0 EGP and ≤ 99,999.
+// The tier-based PricingBounds enforcement was retired in the service taxonomy
+// restructure.
+const RATE_FLOOR_EGP = 1;
+const RATE_CEILING_EGP = 99_999;
 
 const OFFER_TTL_HOURS = 24;
 
@@ -41,12 +45,17 @@ export class OffersService {
     // Offer.petFriendId is the sitter's user ID (not profile ID)
     const resolvedSitterId = sitterProfile.userId;
 
-    const profile = sitterProfile;
-    const tier = computeSitterTier(profile.totalReviews, Number(profile.avgRating));
-    const range = getPriceRange(body.service, tier, (profile as any).isVerifiedTrainer);
-
-    // Warn (not block) if below 70% of listed price — we just let it through
-    // The check is done on the mobile side for UX warning; server allows it
+    // Sanity-check the offered price (no platform tier ranges anymore).
+    if (
+      !Number.isFinite(body.ownerPrice) ||
+      body.ownerPrice < RATE_FLOOR_EGP ||
+      body.ownerPrice > RATE_CEILING_EGP
+    ) {
+      throw new BadRequestException({
+        error: 'INVALID_PRICE',
+        message: `Offer price must be between ${RATE_FLOOR_EGP} and ${RATE_CEILING_EGP} EGP.`,
+      });
+    }
 
     // Check no existing PENDING offer from this owner to this sitter for this service
     const existing = await this.prisma.offer.findFirst({
@@ -96,7 +105,7 @@ export class OffersService {
       { offerId: offer.id },
     );
 
-    return { ...offer, priceRange: range, tier };
+    return offer;
   }
 
   // ─── GET MY OFFERS (owner or sitter) ──────────────────────────────────────
@@ -228,19 +237,16 @@ export class OffersService {
       throw new BadRequestException({ error: 'MAX_ROUNDS', message: 'Maximum negotiation rounds reached. Accept or decline only.' });
     }
 
-    // Validate counter price is within tier range
-    const profile = await this.prisma.petFriendProfile.findUnique({
-      where: { userId: petFriendId },
-    });
-    if (profile) {
-      const tier = computeSitterTier(profile.totalReviews, Number(profile.avgRating));
-      const range = getPriceRange(offer.service as string, tier, (profile as any).isVerifiedTrainer);
-      if (counterPrice < range.min || counterPrice > range.max) {
-        throw new BadRequestException({
-          error: 'PRICE_OUT_OF_RANGE',
-          message: `Counter price must be between ${range.min} and ${range.max} EGP for your tier.`,
-        });
-      }
+    // Sanity-check the counter price.
+    if (
+      !Number.isFinite(counterPrice) ||
+      counterPrice < RATE_FLOOR_EGP ||
+      counterPrice > RATE_CEILING_EGP
+    ) {
+      throw new BadRequestException({
+        error: 'INVALID_PRICE',
+        message: `Counter price must be between ${RATE_FLOOR_EGP} and ${RATE_CEILING_EGP} EGP.`,
+      });
     }
 
     const updated = await this.prisma.offer.update({

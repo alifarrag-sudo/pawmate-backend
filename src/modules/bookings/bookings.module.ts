@@ -6,12 +6,14 @@ import { PricingService } from './pricing.service';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RedisModule } from '../../common/redis.module';
 import { CareLogModule } from '../care-log/care-log.module';
+import { PricingModule } from '../pricing/pricing.module';
 
 @Module({
   imports: [
     PrismaModule,
     RedisModule,
     CareLogModule,
+    PricingModule,
   ],
   controllers: [BookingsController],
   providers: [BookingsService, MatchingService, PricingService],

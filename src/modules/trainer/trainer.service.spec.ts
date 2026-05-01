@@ -20,7 +20,6 @@ const mockPrisma = {
   },
   trainerPayout: { create: jest.fn() },
   user: { update: jest.fn(), findUnique: jest.fn() },
-  pricingBounds: { findMany: jest.fn() },
   booking: { findUnique: jest.fn(), update: jest.fn() },
 };
 
@@ -129,8 +128,6 @@ describe('TrainerService', () => {
         .mockResolvedValueOnce(fullProfile)   // updateProfile update call
         .mockResolvedValueOnce({ ...fullProfile, status: 'APPROVED' }); // auto-approve update
 
-      mockPrisma.pricingBounds.findMany.mockResolvedValue([]);
-
       await service.updateProfile('u1', { bio: fullProfile.bio });
 
       // Should emit auto_approved event
@@ -159,8 +156,12 @@ describe('TrainerService', () => {
   // Pricing guard
   // ──────────────────────────────────────────────────────────────────────────
 
-  describe('updateProfile — pricing guard', () => {
-    it('should reject out-of-bounds trainer prices', async () => {
+  describe('updateProfile — pricing sanity bounds', () => {
+    // Tier-based PricingBounds were retired in the service taxonomy
+    // restructure. Today we only sanity-check that priceEgp is a positive
+    // whole number ≤ 99,999.
+
+    it('rejects priceEgp <= 0', async () => {
       mockPrisma.trainerProfile.findUnique.mockResolvedValue({
         id: 'tp1',
         userId: 'u1',
@@ -168,20 +169,17 @@ describe('TrainerService', () => {
         averageRating: null,
         totalSessions: 0,
       });
-      mockPrisma.pricingBounds.findMany.mockResolvedValue([
-        { serviceType: 'TRAINING_SESSION_1HR', minEgp: 150, defaultMaxEgp: 500, eliteMaxEgp: 1200 },
-      ]);
 
       await expect(
         service.updateProfile('u1', {
           servicesJson: [
-            { type: 'TRAINING_SESSION_1HR', priceEgp: 50, description: 'test', deliveryMode: 'IN_HOME' },
+            { type: 'TRAINING_SESSION_1HR', priceEgp: 0, description: 'test', deliveryMode: 'IN_HOME' },
           ],
         }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should accept in-bounds prices', async () => {
+    it('rejects priceEgp > 99,999', async () => {
       mockPrisma.trainerProfile.findUnique.mockResolvedValue({
         id: 'tp1',
         userId: 'u1',
@@ -189,9 +187,24 @@ describe('TrainerService', () => {
         averageRating: null,
         totalSessions: 0,
       });
-      mockPrisma.pricingBounds.findMany.mockResolvedValue([
-        { serviceType: 'TRAINING_SESSION_1HR', minEgp: 150, defaultMaxEgp: 500, eliteMaxEgp: 1200 },
-      ]);
+
+      await expect(
+        service.updateProfile('u1', {
+          servicesJson: [
+            { type: 'TRAINING_SESSION_1HR', priceEgp: 100_000, description: 'test', deliveryMode: 'IN_HOME' },
+          ],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('accepts a previously out-of-tier-range price (no platform cap)', async () => {
+      mockPrisma.trainerProfile.findUnique.mockResolvedValue({
+        id: 'tp1',
+        userId: 'u1',
+        status: 'PENDING_DOCS',
+        averageRating: null,
+        totalSessions: 0,
+      });
       mockPrisma.trainerProfile.update.mockResolvedValue({
         id: 'tp1',
         status: 'PENDING_DOCS',
@@ -200,7 +213,7 @@ describe('TrainerService', () => {
       await expect(
         service.updateProfile('u1', {
           servicesJson: [
-            { type: 'TRAINING_SESSION_1HR', priceEgp: 300, description: 'test', deliveryMode: 'IN_HOME' },
+            { type: 'TRAINING_SESSION_1HR', priceEgp: 5_000, description: 'test', deliveryMode: 'IN_HOME' },
           ],
         }),
       ).resolves.toBeDefined();

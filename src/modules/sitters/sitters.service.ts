@@ -1,7 +1,30 @@
 import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
-import { buildPricingInfo, getPriceRange, computeSitterTier } from '../../common/utils/pricing.util';
+
+const RATE_FLOOR_EGP = 1;
+const RATE_CEILING_EGP = 99_999;
+
+function assertSaneRate(rate: number, fieldName: string): void {
+  if (!Number.isFinite(rate) || !Number.isInteger(rate)) {
+    throw new BadRequestException({
+      error: 'INVALID_RATE',
+      message: `Price for ${fieldName} must be a whole-number EGP value`,
+    });
+  }
+  if (rate < RATE_FLOOR_EGP) {
+    throw new BadRequestException({
+      error: 'INVALID_RATE',
+      message: `Price for ${fieldName} must be greater than 0 EGP`,
+    });
+  }
+  if (rate > RATE_CEILING_EGP) {
+    throw new BadRequestException({
+      error: 'INVALID_RATE',
+      message: `Price for ${fieldName} cannot exceed ${RATE_CEILING_EGP} EGP`,
+    });
+  }
+}
 
 const DAY_MAP: Record<number, string> = { 0: 'sun', 1: 'mon', 2: 'tue', 3: 'wed', 4: 'thu', 5: 'fri', 6: 'sat' };
 
@@ -41,21 +64,30 @@ export class SittersService {
       include: { reviewer: { select: { firstName: true, lastName: true } } },
     });
 
-    // Build per-service pricing summary
+    // Build per-service pricing summary using the new BOARDING/WALKING/DAY_CARE
+    // schema fields. The legacy PricingBounds tier system was removed in the
+    // service taxonomy restructure — providers now set their own rates with
+    // no platform-enforced caps.
     const p = profile as any;
-    const currentPrices: Record<string, number | null> = {
-      dog_walking:        p.dogWalkingPrice ? Number(p.dogWalkingPrice) : null,
-      house_sitting:      p.houseSittingPrice ? Number(p.houseSittingPrice) : null,
-      daycare:            p.daycarePrice ? Number(p.daycarePrice) : null,
-      overnight_boarding: p.overnightPrice ? Number(p.overnightPrice) : null,
-      drop_in:            p.dropInVisitPrice ? Number(p.dropInVisitPrice) : null,
+    const pricing = {
+      currency: 'EGP',
+      services: {
+        BOARDING: {
+          perNightEgp: p.boardingPerNightRateEgp ?? null,
+          latePickupHourlyEgp: p.boardingLatePickupHourlyEgp ?? null,
+        },
+        WALKING: {
+          perHourEgp: p.walkingPerHourRateEgp ?? null,
+          minimumHours: p.walkingMinimumHours ?? 1,
+          extraHourlyEgp: p.walkingExtraHourlyRateEgp ?? null,
+        },
+        DAY_CARE: {
+          sixHourEgp: p.daycareSixHourRateEgp ?? null,
+          eightHourEgp: p.daycareEightHourRateEgp ?? null,
+          latePickupHourlyEgp: p.daycareLatePickupHourlyEgp ?? null,
+        },
+      },
     };
-    const pricing = buildPricingInfo(
-      profile.totalReviews,
-      Number(profile.avgRating),
-      p.isVerifiedTrainer,
-      currentPrices,
-    );
 
     return {
       ...profile,
@@ -189,29 +221,42 @@ export class SittersService {
 
   // ─── DYNAMIC PRICING ────────────────────────────────────────────────────
 
-  /** Get pricing tier, ranges and current service prices for any sitter (by sitterProfile.id) */
+  /**
+   * Return current per-service rates for a sitter (no platform tier ranges —
+   * those were retired with PricingBounds during the service taxonomy
+   * restructure).
+   */
   async getPricingInfo(petFriendId: string) {
     const profile = await this.prisma.petFriendProfile.findUnique({ where: { id: petFriendId } });
     if (!profile) throw new NotFoundException('Sitter not found');
 
     const pp = profile as any;
-    const currentPrices: Record<string, number | null> = {
-      dog_walking:        pp.dogWalkingPrice ? Number(pp.dogWalkingPrice) : null,
-      house_sitting:      pp.houseSittingPrice ? Number(pp.houseSittingPrice) : null,
-      daycare:            pp.daycarePrice ? Number(pp.daycarePrice) : null,
-      overnight_boarding: pp.overnightPrice ? Number(pp.overnightPrice) : null,
-      drop_in:            pp.dropInVisitPrice ? Number(pp.dropInVisitPrice) : null,
+    return {
+      currency: 'EGP',
+      services: {
+        BOARDING: {
+          perNightEgp: pp.boardingPerNightRateEgp ?? null,
+          latePickupHourlyEgp: pp.boardingLatePickupHourlyEgp ?? null,
+        },
+        WALKING: {
+          perHourEgp: pp.walkingPerHourRateEgp ?? null,
+          minimumHours: pp.walkingMinimumHours ?? 1,
+          extraHourlyEgp: pp.walkingExtraHourlyRateEgp ?? null,
+        },
+        DAY_CARE: {
+          sixHourEgp: pp.daycareSixHourRateEgp ?? null,
+          eightHourEgp: pp.daycareEightHourRateEgp ?? null,
+          latePickupHourlyEgp: pp.daycareLatePickupHourlyEgp ?? null,
+        },
+      },
     };
-
-    return buildPricingInfo(
-      profile.totalReviews,
-      Number(profile.avgRating),
-      pp.isVerifiedTrainer,
-      currentPrices,
-    );
   }
 
-  /** Sitter updates their per-service prices (validated against tier ranges) */
+  /**
+   * Legacy entry point. Today this is mapped onto the new pricing fields and
+   * sanity-validated (rate > 0 AND rate ≤ 99,999). The old tier-based
+   * PricingBounds enforcement was removed.
+   */
   async updateServicePricing(userId: string, prices: {
     dog_walking?: number;
     house_sitting?: number;
@@ -222,18 +267,9 @@ export class SittersService {
     const profile = await this.prisma.petFriendProfile.findUnique({ where: { userId } });
     if (!profile) throw new NotFoundException('Sitter profile not found');
 
-    const tier = computeSitterTier(profile.totalReviews, Number(profile.avgRating));
-
-    // Validate each submitted price is within allowed range
     for (const [svc, price] of Object.entries(prices)) {
       if (price === undefined || price === null) continue;
-      const range = getPriceRange(svc, tier, (profile as any).isVerifiedTrainer);
-      if (price < range.min || price > range.max) {
-        throw new BadRequestException({
-          error: 'PRICE_OUT_OF_RANGE',
-          message: `Price for ${svc} must be between ${range.min} and ${range.max} EGP for your tier (${tier}).`,
-        });
-      }
+      assertSaneRate(price, svc);
     }
 
     return this.prisma.petFriendProfile.update({

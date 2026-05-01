@@ -1,7 +1,9 @@
 import { Controller, Get, Post, Patch, Param, Body, Query, Request, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
+import { RecordPickupDto } from '../pricing/dto/record-pickup.dto';
+import { PricingService } from '../pricing/pricing.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('bookings')
@@ -9,7 +11,10 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 @UseGuards(JwtAuthGuard)
 @Controller('bookings')
 export class BookingsController {
-  constructor(private bookingsService: BookingsService) {}
+  constructor(
+    private bookingsService: BookingsService,
+    private pricingService: PricingService,
+  ) {}
 
   @Post()
   create(@Request() req: any, @Body() dto: CreateBookingDto) {
@@ -109,5 +114,25 @@ export class BookingsController {
   @Post(':id/verify-end-code')
   verifyEndCode(@Request() req: any, @Param('id') id: string, @Body('code') code: string) {
     return this.bookingsService.verifyEndCode(req.user?.id, id, code);
+  }
+
+  // ── Late-pickup recording (BOARDING / DAY_CARE) ──────────────────────────────
+
+  /**
+   * Record actual pickup time and persist the late-pickup fee.
+   * Returns { lateFeeEgp, hoursLate, charged }. The Paymob charge for the late
+   * fee is enqueued by the bookings service in a follow-up; this endpoint only
+   * computes and persists.
+   */
+  @Post(':id/record-pickup')
+  @ApiOperation({ summary: 'Record actual pickup time and calculate late fee' })
+  async recordPickup(@Param('id') id: string, @Body() dto: RecordPickupDto) {
+    const pickupTime = dto.pickupTime ? new Date(dto.pickupTime) : new Date();
+    const result = await this.pricingService.recordPickup(id, pickupTime);
+    return {
+      lateFeeEgp: result.fee,
+      hoursLate: result.hoursLate,
+      charged: result.charged,
+    };
   }
 }
