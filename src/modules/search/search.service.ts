@@ -12,6 +12,23 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Map a serviceType (BOARDING / WALKING / DAY_CARE / legacy lowercase) to the
+ * PetFriendProfile column that holds its rate. Used to apply a maxPrice filter
+ * scoped to the service the user is searching for.
+ */
+function rateColumnForServiceType(serviceType: string | undefined): string | null {
+  if (!serviceType) return null;
+  const upper = serviceType.toUpperCase();
+  if (upper === 'BOARDING' || upper === 'OVERNIGHT_STAY') return 'boardingPerNightRateEgp';
+  if (upper === 'WALKING' || upper === 'DOG_WALKING') return 'walkingPerHourRateEgp';
+  // For DAY_CARE we filter on the cheaper 6-hour rate.
+  if (upper === 'DAY_CARE' || upper === 'PET_WATCHING_HOURLY' || upper === 'PET_WATCHING_DAILY') {
+    return 'daycareSixHourRateEgp';
+  }
+  return null;
+}
+
 @Injectable()
 export class SearchService {
   constructor(private prisma: PrismaService) {}
@@ -23,8 +40,9 @@ export class SearchService {
     radiusKm?: number;
     page?: number;
     limit?: number;
+    maxPrice?: number;
   }) {
-    const { lat, lng, serviceType, radiusKm = 10, page = 1, limit = 20 } = params;
+    const { lat, lng, serviceType, radiusKm = 10, page = 1, limit = 20, maxPrice } = params;
     const delta = radiusKm / 111;
 
     const where: any = {
@@ -34,7 +52,14 @@ export class SearchService {
     };
 
     if (serviceType) {
-      where.services = { has: serviceType };
+      where.servicesOffered = { has: serviceType };
+    }
+
+    if (maxPrice != null && Number.isFinite(maxPrice)) {
+      const col = rateColumnForServiceType(serviceType);
+      if (col) {
+        where[col] = { lte: maxPrice };
+      }
     }
 
     const [sitters, total] = await Promise.all([
@@ -61,8 +86,9 @@ export class SearchService {
     radiusKm?: number;
     serviceType?: string;
     limit?: number;
+    maxPrice?: number;
   }) {
-    const { lat, lng, radiusKm = 10, serviceType, limit = 20 } = params;
+    const { lat, lng, radiusKm = 10, serviceType, limit = 20, maxPrice } = params;
     // Bounding box pre-filter (cheap SQL), then haversine for accurate distance
     const delta = radiusKm / 111;
 
@@ -72,7 +98,13 @@ export class SearchService {
       lng: { gte: lng - delta, lte: lng + delta },
     };
     if (serviceType) {
-      where.services = { has: serviceType };
+      where.servicesOffered = { has: serviceType };
+    }
+    if (maxPrice != null && Number.isFinite(maxPrice)) {
+      const col = rateColumnForServiceType(serviceType);
+      if (col) {
+        where[col] = { lte: maxPrice };
+      }
     }
 
     const candidates = await this.prisma.petFriendProfile.findMany({
