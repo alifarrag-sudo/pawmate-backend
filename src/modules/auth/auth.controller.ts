@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { Public } from '../../common/decorators/public.decorator';
+import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -32,6 +33,7 @@ export class AuthController {
   // ─── Public: Registration & Login ─────────────────────────────────────────
 
   @Public()
+  @SkipTransform()
   @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('register')
   @ApiOperation({ summary: 'Register with email + password (email-first, no OTP gate)' })
@@ -40,15 +42,17 @@ export class AuthController {
   }
 
   @Public()
+  @SkipTransform()
   @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Sign in with email + password' })
+  @ApiOperation({ summary: 'Sign in with email or phone + password' })
   async login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, req.ip, req.headers['user-agent']);
   }
 
   @Public()
+  @SkipTransform()
   @Throttle({ short: { ttl: 1000, limit: 3 }, medium: { ttl: 60000, limit: 10 } })
   @Post('social')
   @HttpCode(HttpStatus.OK)
@@ -90,6 +94,7 @@ export class AuthController {
   // ─── Public: One-Time Login (for direct-created team members) ─────────────
 
   @Public()
+  @SkipTransform()
   @Post('one-time-login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in using a one-time login token (sent via email to direct-created team members)' })
@@ -100,6 +105,7 @@ export class AuthController {
   // ─── Public: Token management ──────────────────────────────────────────────
 
   @Public()
+  @SkipTransform()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token using refresh token' })
@@ -110,6 +116,7 @@ export class AuthController {
   // ─── Authenticated ─────────────────────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
+  @SkipTransform()
   @Get('me')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user with all role profiles' })
@@ -184,6 +191,33 @@ export class AuthController {
     return this.authService.sendPhoneVerificationCode(userId, body.phone);
   }
 
+  // ─── OTP route aliases — clients call /auth/send-otp + /auth/verify-otp ───
+  // Same JWT-protected handlers as send-phone-verification + verify-phone.
+
+  @UseGuards(JwtAuthGuard)
+  @Post('send-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Alias for /auth/send-phone-verification' })
+  async sendOtp(
+    @CurrentUser('id') userId: string,
+    @Body() body: { phone: string },
+  ) {
+    return this.authService.sendPhoneVerificationCode(userId, body.phone);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('verify-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Alias for /auth/verify-phone' })
+  async verifyOtp(
+    @CurrentUser('id') userId: string,
+    @Body() body: { code: string; phone: string },
+  ) {
+    return this.authService.verifyPhone(userId, body.code, body.phone);
+  }
+
   // ─── Authenticated: Role management ────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
@@ -206,6 +240,7 @@ export class AuthController {
   // ─── Legacy: Google-only route (backward compat) ──────────────────────────
 
   @Public()
+  @SkipTransform()
   @Post('google')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: '[Deprecated] Use POST /auth/social instead' })

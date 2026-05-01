@@ -137,16 +137,30 @@ export class AuthService {
   // ─── Login ────────────────────────────────────────────────────────────────
 
   async login(dto: LoginDto, ipAddress?: string, userAgent?: string) {
-    const email = dto.email.trim().toLowerCase();
+    // Support email-or-phone login. The DTO requires at least one (validated
+    // by class-validator's @ValidateIf rules in LoginDto).
+    const email = dto.email?.trim().toLowerCase();
+    const phone = dto.phone?.trim();
+
+    if (!email && !phone) {
+      throw new UnauthorizedException({
+        error: 'MISSING_IDENTIFIER',
+        message: 'Email or phone is required.',
+      });
+    }
 
     const user = await this.prisma.user.findFirst({
-      where: { email, deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(email ? { email } : {}),
+        ...(phone && !email ? { phone } : {}),
+      },
     });
 
     if (!user) {
       throw new UnauthorizedException({
         error: 'INVALID_CREDENTIALS',
-        message: 'Incorrect email or password.',
+        message: 'Incorrect email/phone or password.',
       });
     }
 
