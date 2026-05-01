@@ -48,7 +48,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a vet clinic profile (requires VET_CLINIC business)' })
   apply(@Request() req: any, @Body() dto: ApplyVetDto) {
-    return this.vetService.applyForVet(req.user.sub, dto);
+    return this.vetService.applyForVet(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -56,7 +56,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update vet profile fields' })
   updateProfile(@Request() req: any, @Body() dto: UpdateVetProfileDto) {
-    return this.vetService.updateProfile(req.user.sub, dto);
+    return this.vetService.updateProfile(req.user.id, dto);
   }
 
   @Get('me')
@@ -64,7 +64,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user vet profile (operator view)' })
   getMyProfile(@Request() req: any) {
-    return this.vetService.getMyProfile(req.user.sub);
+    return this.vetService.getMyProfile(req.user.id);
   }
 
   @Get('public/:id')
@@ -106,7 +106,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add an affiliation to the vet profile' })
   createAffiliation(@Request() req: any, @Body() dto: CreateAffiliationDto) {
-    return this.vetService.createAffiliation(req.user.sub, dto);
+    return this.vetService.createAffiliation(req.user.id, dto);
   }
 
   @Get('affiliations')
@@ -114,7 +114,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get all affiliations for the current vet profile' })
   getAffiliations(@Request() req: any) {
-    return this.vetService.getAffiliations(req.user.sub);
+    return this.vetService.getAffiliations(req.user.id);
   }
 
   // ── Admin Review ────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ export class VetController {
     @Body() body: { approve: boolean; rejectionReason?: string },
   ) {
     return this.vetService.adminVerifyAffiliation(
-      req.user.sub,
+      req.user.id,
       id,
       body.approve,
       body.rejectionReason,
@@ -148,7 +148,7 @@ export class VetController {
     @Body() body: { approve: boolean },
   ) {
     return this.vetService.adminReviewVetProfile(
-      req.user.sub,
+      req.user.id,
       id,
       body.approve,
     );
@@ -169,7 +169,7 @@ export class VetController {
     @Body() dto: CreateConsultationDto,
   ) {
     return this.consultationService.createConsultation(
-      req.user.sub,
+      req.user.id,
       vetProfileId,
       dto,
     );
@@ -181,7 +181,7 @@ export class VetController {
   @ApiOperation({ summary: 'Get a consultation (vet team or pet owner)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   getConsultation(@Request() req: any, @Param('id') id: string) {
-    return this.consultationService.getConsultation(req.user.sub, id);
+    return this.consultationService.getConsultation(req.user.id, id);
   }
 
   @Patch('consultations/:id')
@@ -194,7 +194,7 @@ export class VetController {
     @Param('id') id: string,
     @Body() dto: UpdateConsultationDto,
   ) {
-    return this.consultationService.updateConsultation(req.user.sub, id, dto);
+    return this.consultationService.updateConsultation(req.user.id, id, dto);
   }
 
   @Delete('consultations/:id')
@@ -203,7 +203,7 @@ export class VetController {
   @ApiOperation({ summary: 'Soft-delete a consultation (vet team only)' })
   @ApiParam({ name: 'id', description: 'Consultation ID' })
   deleteConsultation(@Request() req: any, @Param('id') id: string) {
-    return this.consultationService.softDeleteConsultation(req.user.sub, id);
+    return this.consultationService.softDeleteConsultation(req.user.id, id);
   }
 
   @Get(':vetProfileId/pets/:petId/history')
@@ -218,7 +218,7 @@ export class VetController {
     @Param('petId') petId: string,
   ) {
     return this.consultationService.getPetHistory(
-      req.user.sub,
+      req.user.id,
       vetProfileId,
       petId,
     );
@@ -233,7 +233,7 @@ export class VetController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create an e-prescription (vet team only)' })
   createPrescription(@Request() req: any, @Body() dto: CreatePrescriptionDto) {
-    return this.prescriptionService.createPrescription(req.user.sub, dto);
+    return this.prescriptionService.createPrescription(req.user.id, dto);
   }
 
   @Get('prescriptions/:id')
@@ -242,7 +242,7 @@ export class VetController {
   @ApiOperation({ summary: 'Get a prescription by ID (vet team or pet owner)' })
   @ApiParam({ name: 'id', description: 'Prescription ID' })
   getPrescription(@Request() req: any, @Param('id') id: string) {
-    return this.prescriptionService.getPrescription(req.user.sub, id);
+    return this.prescriptionService.getPrescription(req.user.id, id);
   }
 
   @Get('prescriptions/number/:number')
@@ -255,7 +255,7 @@ export class VetController {
     @Param('number') prescriptionNumber: string,
   ) {
     return this.prescriptionService.getPrescriptionByNumber(
-      req.user.sub,
+      req.user.id,
       prescriptionNumber,
     );
   }
@@ -270,7 +270,7 @@ export class VetController {
     @Param('consultationId') consultationId: string,
   ) {
     return this.prescriptionService.getConsultationPrescriptions(
-      req.user.sub,
+      req.user.id,
       consultationId,
     );
   }
@@ -281,7 +281,7 @@ export class VetController {
   @ApiOperation({ summary: 'Mark a prescription as dispensed (vet team only)' })
   @ApiParam({ name: 'id', description: 'Prescription ID' })
   dispensePrescription(@Request() req: any, @Param('id') id: string) {
-    return this.prescriptionService.dispensePrescription(req.user.sub, id);
+    return this.prescriptionService.dispensePrescription(req.user.id, id);
   }
 
   @Post('prescriptions/:id/cancel')
@@ -290,6 +290,6 @@ export class VetController {
   @ApiOperation({ summary: 'Cancel a prescription (vet team only)' })
   @ApiParam({ name: 'id', description: 'Prescription ID' })
   cancelPrescription(@Request() req: any, @Param('id') id: string) {
-    return this.prescriptionService.cancelPrescription(req.user.sub, id);
+    return this.prescriptionService.cancelPrescription(req.user.id, id);
   }
 }

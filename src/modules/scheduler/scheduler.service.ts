@@ -209,12 +209,12 @@ export class SchedulerService {
         OR: [{ parentReviewed: true }, { providerReviewed: true }],
       },
       include: {
-        reviews: { where: { isPublished: false } },
+        review: true,
       },
     });
 
     for (const booking of bookingsWithPendingReviews) {
-      if (booking.reviews.length > 0) {
+      if (booking.review && !booking.review.isPublished) {
         await this.prisma.review.updateMany({
           where: { bookingId: booking.id, isPublished: false },
           data: { isPublished: true, publishedAt: now },

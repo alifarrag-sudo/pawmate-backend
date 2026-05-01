@@ -55,7 +55,7 @@ export class PetFriendAdminController {
       profileId,
       dto.action,
       dto.reason,
-      req.user.sub,
+      req.user.id,
     );
   }
 
@@ -78,7 +78,7 @@ export class PetFriendAdminController {
       profileId,
       dto.reason,
       dto.until ? new Date(dto.until) : undefined,
-      req.user.sub,
+      req.user.id,
     );
   }
 
@@ -93,6 +93,6 @@ export class PetFriendAdminController {
   })
   @ApiParam({ name: 'id', description: 'PetFriendProfile UUID' })
   reinstate(@Param('id') profileId: string, @Request() req: any) {
-    return this.petFriendService.adminReinstate(profileId, req.user.sub);
+    return this.petFriendService.adminReinstate(profileId, req.user.id);
   }
 }

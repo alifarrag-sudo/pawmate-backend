@@ -45,7 +45,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a shop profile (requires SHOP business)' })
   apply(@Request() req: any, @Body() dto: ApplyShopDto) {
-    return this.shopService.applyForShop(req.user.sub, dto);
+    return this.shopService.applyForShop(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -53,7 +53,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update shop profile fields' })
   updateProfile(@Request() req: any, @Body() dto: UpdateShopProfileDto) {
-    return this.shopService.updateProfile(req.user.sub, dto);
+    return this.shopService.updateProfile(req.user.id, dto);
   }
 
   @Get('me')
@@ -61,7 +61,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user shop profile (operator view)' })
   getMyProfile(@Request() req: any) {
-    return this.shopService.getMyProfile(req.user.sub);
+    return this.shopService.getMyProfile(req.user.id);
   }
 
   @Get('public/:id')
@@ -100,7 +100,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a product listing' })
   createProduct(@Request() req: any, @Body() dto: CreateProductDto) {
-    return this.shopService.createProduct(req.user.sub, dto);
+    return this.shopService.createProduct(req.user.id, dto);
   }
 
   @Patch('products/:id')
@@ -113,7 +113,7 @@ export class ShopController {
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
   ) {
-    return this.shopService.updateProduct(req.user.sub, id, dto);
+    return this.shopService.updateProduct(req.user.id, id, dto);
   }
 
   @Delete('products/:id')
@@ -122,7 +122,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Soft-delete (deactivate) a product' })
   @ApiParam({ name: 'id', description: 'Product ID' })
   deleteProduct(@Request() req: any, @Param('id') id: string) {
-    return this.shopService.deleteProduct(req.user.sub, id);
+    return this.shopService.deleteProduct(req.user.id, id);
   }
 
   @Get('products/shop/:shopId')
@@ -152,7 +152,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get inventory overview (operator)' })
   getInventory(@Request() req: any) {
-    return this.shopService.getInventory(req.user.sub);
+    return this.shopService.getInventory(req.user.id);
   }
 
   @Patch('products/:id/stock')
@@ -165,7 +165,7 @@ export class ShopController {
     @Param('id') id: string,
     @Body() dto: AdjustStockDto,
   ) {
-    return this.shopService.adjustStock(req.user.sub, id, dto);
+    return this.shopService.adjustStock(req.user.id, id, dto);
   }
 
   // ── Vision Scan ─────────────────────────────────────────────────────────────
@@ -175,7 +175,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Scan product image with AI vision (preview only)' })
   scanProduct(@Request() req: any, @Body() dto: ScanProductDto) {
-    return this.shopService.scanProduct(req.user.sub, dto);
+    return this.shopService.scanProduct(req.user.id, dto);
   }
 
   @Post('products/scan-and-create')
@@ -183,7 +183,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Scan product image and create draft listing' })
   scanAndCreateProduct(@Request() req: any, @Body() dto: ScanProductDto) {
-    return this.shopService.scanAndCreateProduct(req.user.sub, dto);
+    return this.shopService.scanAndCreateProduct(req.user.id, dto);
   }
 
   // ── Orders (Parent) ────────────────────────────────────────────────────────
@@ -193,7 +193,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new order (parent)' })
   createOrder(@Request() req: any, @Body() dto: CreateOrderDto) {
-    return this.orderService.createOrder(req.user.sub, dto);
+    return this.orderService.createOrder(req.user.id, dto);
   }
 
   @Get('orders/my')
@@ -201,7 +201,7 @@ export class ShopController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get my orders as parent' })
   getMyOrders(@Request() req: any) {
-    return this.orderService.getParentOrders(req.user.sub);
+    return this.orderService.getParentOrders(req.user.id);
   }
 
   @Get('orders/:id')
@@ -210,7 +210,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Get order detail (parent or shop owner)' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   getOrderById(@Request() req: any, @Param('id') id: string) {
-    return this.orderService.getOrderById(req.user.sub, id);
+    return this.orderService.getOrderById(req.user.id, id);
   }
 
   // ── Orders (Operator) ──────────────────────────────────────────────────────
@@ -221,7 +221,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Get orders for a shop (operator)' })
   @ApiParam({ name: 'shopId', description: 'Shop profile ID' })
   getShopOrders(@Request() req: any, @Param('shopId') shopId: string) {
-    return this.orderService.getShopOrders(req.user.sub, shopId);
+    return this.orderService.getShopOrders(req.user.id, shopId);
   }
 
   @Post('orders/:id/confirm')
@@ -230,7 +230,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Confirm an order (operator)' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   confirmOrder(@Request() req: any, @Param('id') id: string) {
-    return this.orderService.confirmOrder(req.user.sub, id);
+    return this.orderService.confirmOrder(req.user.id, id);
   }
 
   @Post('orders/:id/dispatch')
@@ -239,7 +239,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Mark order as dispatched (operator)' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   dispatchOrder(@Request() req: any, @Param('id') id: string) {
-    return this.orderService.dispatchOrder(req.user.sub, id);
+    return this.orderService.dispatchOrder(req.user.id, id);
   }
 
   @Post('orders/:id/deliver')
@@ -248,7 +248,7 @@ export class ShopController {
   @ApiOperation({ summary: 'Mark order as delivered (operator)' })
   @ApiParam({ name: 'id', description: 'Order ID' })
   deliverOrder(@Request() req: any, @Param('id') id: string) {
-    return this.orderService.deliverOrder(req.user.sub, id);
+    return this.orderService.deliverOrder(req.user.id, id);
   }
 
   @Post('orders/:id/cancel')
@@ -261,6 +261,6 @@ export class ShopController {
     @Param('id') id: string,
     @Body() body: { reason?: string },
   ) {
-    return this.orderService.cancelOrder(req.user.sub, id, body.reason);
+    return this.orderService.cancelOrder(req.user.id, id, body.reason);
   }
 }

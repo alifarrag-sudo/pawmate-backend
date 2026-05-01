@@ -46,7 +46,7 @@ export class GroomerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a groomer profile (requires GROOMING_SALON business)' })
   apply(@Request() req: any, @Body() dto: ApplyGroomerDto) {
-    return this.groomerService.applyForGroomer(req.user.sub, dto);
+    return this.groomerService.applyForGroomer(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -54,7 +54,7 @@ export class GroomerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update groomer profile fields' })
   updateProfile(@Request() req: any, @Body() dto: UpdateGroomerProfileDto) {
-    return this.groomerService.updateProfile(req.user.sub, dto);
+    return this.groomerService.updateProfile(req.user.id, dto);
   }
 
   @Get('me')
@@ -62,7 +62,7 @@ export class GroomerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user groomer profile (operator view)' })
   getMyProfile(@Request() req: any) {
-    return this.groomerService.getMyProfile(req.user.sub);
+    return this.groomerService.getMyProfile(req.user.id);
   }
 
   @Get('public/:id')
@@ -112,7 +112,7 @@ export class GroomerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new grooming service' })
   createService(@Request() req: any, @Body() dto: CreateServiceDto) {
-    return this.groomerService.createService(req.user.sub, dto);
+    return this.groomerService.createService(req.user.id, dto);
   }
 
   @Patch('services/:id')
@@ -125,7 +125,7 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: UpdateServiceDto,
   ) {
-    return this.groomerService.updateService(req.user.sub, id, dto);
+    return this.groomerService.updateService(req.user.id, id, dto);
   }
 
   @Delete('services/:id')
@@ -134,7 +134,7 @@ export class GroomerController {
   @ApiOperation({ summary: 'Soft-delete a grooming service (marks inactive)' })
   @ApiParam({ name: 'id', description: 'Service ID' })
   deleteService(@Request() req: any, @Param('id') id: string) {
-    return this.groomerService.deleteService(req.user.sub, id);
+    return this.groomerService.deleteService(req.user.id, id);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -166,7 +166,7 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: StartAppointmentDto,
   ) {
-    return this.groomerService.startAppointment(req.user.sub, id, dto);
+    return this.groomerService.startAppointment(req.user.id, id, dto);
   }
 
   @Post('appointments/:id/complete')
@@ -179,7 +179,7 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: CompleteAppointmentDto,
   ) {
-    return this.groomerService.completeAppointment(req.user.sub, id, dto);
+    return this.groomerService.completeAppointment(req.user.id, id, dto);
   }
 
   @Post('appointments/:id/cancel')
@@ -188,7 +188,7 @@ export class GroomerController {
   @ApiOperation({ summary: 'Cancel a grooming appointment' })
   @ApiParam({ name: 'id', description: 'Appointment ID' })
   cancelAppointment(@Request() req: any, @Param('id') id: string) {
-    return this.groomerService.cancelAppointment(req.user.sub, id);
+    return this.groomerService.cancelAppointment(req.user.id, id);
   }
 
   @Post('appointments/:id/no-show')
@@ -197,7 +197,7 @@ export class GroomerController {
   @ApiOperation({ summary: 'Mark appointment as no-show' })
   @ApiParam({ name: 'id', description: 'Appointment ID' })
   markNoShow(@Request() req: any, @Param('id') id: string) {
-    return this.groomerService.markNoShow(req.user.sub, id);
+    return this.groomerService.markNoShow(req.user.id, id);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -214,7 +214,7 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: UploadPhotosDto,
   ) {
-    return this.groomerService.uploadBeforePhotos(req.user.sub, id, dto);
+    return this.groomerService.uploadBeforePhotos(req.user.id, id, dto);
   }
 
   @Post('appointments/:id/after-photos')
@@ -227,7 +227,7 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: UploadPhotosDto,
   ) {
-    return this.groomerService.uploadAfterPhotos(req.user.sub, id, dto);
+    return this.groomerService.uploadAfterPhotos(req.user.id, id, dto);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -240,7 +240,7 @@ export class GroomerController {
   @ApiOperation({ summary: 'Generate a shareable link for a completed appointment (90-day TTL)' })
   @ApiParam({ name: 'id', description: 'Appointment ID' })
   generateShareToken(@Request() req: any, @Param('id') id: string) {
-    return this.groomerService.generateShareToken(req.user.sub, id);
+    return this.groomerService.generateShareToken(req.user.id, id);
   }
 
   @Public()
@@ -265,6 +265,6 @@ export class GroomerController {
     @Param('id') id: string,
     @Body() dto: UpdateAllergyNotesDto,
   ) {
-    return this.groomerService.updateAllergyNotes(req.user.sub, id, dto);
+    return this.groomerService.updateAllergyNotes(req.user.id, id, dto);
   }
 }

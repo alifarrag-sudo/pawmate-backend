@@ -1,15 +1,28 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { ConfigService } from '@nestjs/config';
-import { PrismaService } from '../../../prisma/prisma.service';
 
+interface JwtPayload {
+  sub: string;
+  email?: string;
+  roles?: string[];
+  activeRole?: string;
+}
+
+/**
+ * Pure JWT validation — verifies signature & expiry via passport-jwt and
+ * returns a session-shaped object derived from the payload only.
+ *
+ * Identity contract:
+ *   request.user = { id, email, roles, activeRole }
+ *
+ * Status checks (banned / deleted / inactive) live in JwtAuthGuard which has
+ * Redis-backed caching to avoid hitting the DB on every request.
+ */
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(
-    private configService: ConfigService,
-    private prisma: PrismaService,
-  ) {
+  constructor(private configService: ConfigService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -17,33 +30,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: any) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: {
-        id: true,
-        phone: true,
-        email: true,
-        firstName: true,
-        lastName: true,
-        role: true,
-        activeRole: true,
-        isParent: true,
-        isPetFriend: true,
-        idVerified: true,
-        isActive: true,
-        isBanned: true,
-        banReason: true,
-        walletBalance: true,
-        loyaltyTier: true,
-        loyaltyPoints: true,
-      },
-    });
-
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException({ error: 'ACCOUNT_INACTIVE', message: 'Account is not active.' });
-    }
-
-    return user;
+  async validate(payload: JwtPayload) {
+    return {
+      id: payload.sub,
+      email: payload.email,
+      roles: payload.roles ?? [],
+      activeRole: payload.activeRole,
+    };
   }
 }

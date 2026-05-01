@@ -54,7 +54,7 @@ export class TrainerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to become a Trainer' })
   apply(@Request() req: any, @Body() _dto: ApplyTrainerDto) {
-    return this.trainerService.applyForTrainer(req.user.sub);
+    return this.trainerService.applyForTrainer(req.user.id);
   }
 
   // PATCH /trainer/profile
@@ -63,7 +63,7 @@ export class TrainerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update Trainer profile fields (incremental)' })
   updateProfile(@Request() req: any, @Body() dto: UpdateTrainerProfileDto) {
-    return this.trainerService.updateProfile(req.user.sub, dto);
+    return this.trainerService.updateProfile(req.user.id, dto);
   }
 
   // POST /trainer/documents/upload?documentType=...
@@ -104,7 +104,7 @@ export class TrainerController {
       );
     }
     return this.trainerService.uploadDocument(
-      req.user.sub,
+      req.user.id,
       documentType as any,
       file.buffer,
       file.mimetype,
@@ -117,7 +117,7 @@ export class TrainerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get my Trainer profile with completion %' })
   getMyProfile(@Request() req: any) {
-    return this.trainerService.getMyProfile(req.user.sub);
+    return this.trainerService.getMyProfile(req.user.id);
   }
 
   // GET /trainer/:id (public)
@@ -134,7 +134,7 @@ export class TrainerController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Request instant cashout (3% fee, min 100 EGP)' })
   instantCashout(@Request() req: any, @Body() _dto: TrainerInstantCashoutDto) {
-    return this.trainerService.instantCashout(req.user.sub);
+    return this.trainerService.instantCashout(req.user.id);
   }
 
   // POST /trainer/booking/:id/session-complete
@@ -148,7 +148,7 @@ export class TrainerController {
     @Param('id') bookingId: string,
     @Body() dto: MarkSessionCompleteDto,
   ) {
-    return this.trainerService.markSessionComplete(req.user.sub, bookingId, dto);
+    return this.trainerService.markSessionComplete(req.user.id, bookingId, dto);
   }
 }
 

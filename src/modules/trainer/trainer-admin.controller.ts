@@ -41,7 +41,7 @@ export class TrainerAdminController {
       profileId,
       dto.action,
       dto.reason,
-      req.user.sub,
+      req.user.id,
     );
   }
 
@@ -57,7 +57,7 @@ export class TrainerAdminController {
       profileId,
       dto.reason,
       dto.until ? new Date(dto.until) : undefined,
-      req.user.sub,
+      req.user.id,
     );
   }
 
@@ -65,6 +65,6 @@ export class TrainerAdminController {
   @ApiOperation({ summary: 'Reinstate a suspended Trainer' })
   @ApiParam({ name: 'id', description: 'TrainerProfile ID' })
   reinstate(@Param('id') profileId: string, @Request() req: any) {
-    return this.trainerService.adminReinstate(profileId, req.user.sub);
+    return this.trainerService.adminReinstate(profileId, req.user.id);
   }
 }

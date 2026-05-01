@@ -52,7 +52,7 @@ export class BusinessController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a business' })
   apply(@Request() req: any, @Body() dto: ApplyBusinessDto) {
-    return this.businessService.applyForBusiness(req.user.sub, dto);
+    return this.businessService.applyForBusiness(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -60,7 +60,7 @@ export class BusinessController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update business profile' })
   updateProfile(@Request() req: any, @Body() dto: UpdateBusinessProfileDto) {
-    return this.businessService.updateProfile(req.user.sub, dto);
+    return this.businessService.updateProfile(req.user.id, dto);
   }
 
   @Post('documents/upload')
@@ -94,7 +94,7 @@ export class BusinessController {
     if (!(DOC_TYPES as readonly string[]).includes(documentType)) {
       throw new BadRequestException(`Invalid documentType. Allowed: ${DOC_TYPES.join(', ')}`);
     }
-    return this.businessService.uploadDocument(req.user.sub, documentType as any, file.buffer, file.mimetype);
+    return this.businessService.uploadDocument(req.user.id, documentType as any, file.buffer, file.mimetype);
   }
 
   @Post('branches')
@@ -102,7 +102,7 @@ export class BusinessController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add a branch location' })
   createBranch(@Request() req: any, @Body() dto: CreateBranchDto) {
-    return this.businessService.createBranch(req.user.sub, dto);
+    return this.businessService.createBranch(req.user.id, dto);
   }
 
   @Get('me')
@@ -110,7 +110,7 @@ export class BusinessController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get my business profile + team + branches' })
   getMyBusiness(@Request() req: any) {
-    return this.businessService.getMyBusiness(req.user.sub);
+    return this.businessService.getMyBusiness(req.user.id);
   }
 
   @Get(':id')
@@ -128,7 +128,7 @@ export class BusinessController {
   @ApiOperation({ summary: 'Create team invite link' })
   @ApiParam({ name: 'id', description: 'Business ID' })
   createInvite(@Request() req: any, @Param('id') id: string, @Body() dto: CreateTeamInviteDto) {
-    return this.businessService.createInvite(req.user.sub, id, dto);
+    return this.businessService.createInvite(req.user.id, id, dto);
   }
 
   @Post(':id/team/direct-create')
@@ -137,7 +137,7 @@ export class BusinessController {
   @ApiOperation({ summary: 'Directly create a team member account' })
   @ApiParam({ name: 'id', description: 'Business ID' })
   directCreate(@Request() req: any, @Param('id') id: string, @Body() dto: DirectCreateTeamMemberDto) {
-    return this.businessService.directCreateMember(req.user.sub, id, dto);
+    return this.businessService.directCreateMember(req.user.id, id, dto);
   }
 
   @Get(':id/team')
@@ -153,7 +153,7 @@ export class BusinessController {
     @Query('status') status?: string,
     @Query('providerType') providerType?: string,
   ) {
-    return this.businessService.getTeamList(req.user.sub, id, { status, providerType });
+    return this.businessService.getTeamList(req.user.id, id, { status, providerType });
   }
 
   @Patch(':id/team/:memberId')
@@ -166,7 +166,7 @@ export class BusinessController {
     @Param('memberId') memberId: string,
     @Body() dto: UpdateTeamMemberDto,
   ) {
-    return this.businessService.updateTeamMember(req.user.sub, id, memberId, dto);
+    return this.businessService.updateTeamMember(req.user.id, id, memberId, dto);
   }
 
   @Post(':id/team/:memberId/suspend')
@@ -179,7 +179,7 @@ export class BusinessController {
     @Param('memberId') memberId: string,
     @Body() dto: SuspendTeamMemberDto,
   ) {
-    return this.businessService.suspendTeamMember(req.user.sub, id, memberId, dto);
+    return this.businessService.suspendTeamMember(req.user.id, id, memberId, dto);
   }
 
   @Post(':id/team/:memberId/remove')
@@ -191,7 +191,7 @@ export class BusinessController {
     @Param('id') id: string,
     @Param('memberId') memberId: string,
   ) {
-    return this.businessService.removeTeamMember(req.user.sub, id, memberId);
+    return this.businessService.removeTeamMember(req.user.id, id, memberId);
   }
 
   @Delete(':id/team/invite/:inviteId')
@@ -203,7 +203,7 @@ export class BusinessController {
     @Param('id') id: string,
     @Param('inviteId') inviteId: string,
   ) {
-    return this.businessService.revokeInvite(req.user.sub, id, inviteId);
+    return this.businessService.revokeInvite(req.user.id, id, inviteId);
   }
 }
 
@@ -219,7 +219,7 @@ export class TeamController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Join a business via invite code' })
   joinTeam(@Request() req: any, @Body() dto: JoinTeamDto) {
-    return this.businessService.joinTeam(req.user.sub, dto.inviteCode);
+    return this.businessService.joinTeam(req.user.id, dto.inviteCode);
   }
 
   @Get('my-memberships')
@@ -227,7 +227,7 @@ export class TeamController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get my team memberships' })
   getMyMemberships(@Request() req: any) {
-    return this.businessService.getMyMemberships(req.user.sub);
+    return this.businessService.getMyMemberships(req.user.id);
   }
 
   @Post('leave/:membershipId')
@@ -235,7 +235,7 @@ export class TeamController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Leave a business team' })
   leaveTeam(@Request() req: any, @Param('membershipId') membershipId: string) {
-    return this.businessService.leaveTeam(req.user.sub, membershipId);
+    return this.businessService.leaveTeam(req.user.id, membershipId);
   }
 }
 

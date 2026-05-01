@@ -28,16 +28,17 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     ]);
     if (isPublic) return true;
 
-    // Let Passport validate JWT — sets request.user to the JWT payload
+    // Let Passport validate JWT — JwtStrategy.validate sets request.user to
+    // the session shape: { id, email, roles, activeRole }.
     const result = await (super.canActivate(context) as Promise<boolean>);
     if (!result) return false;
 
     const request = context.switchToHttp().getRequest();
-    const jwtPayload = request.user;
-    if (!jwtPayload?.sub) return false;
+    const sessionUser = request.user;
+    if (!sessionUser?.id) return false;
 
-    // FIX 4: Check Redis cache first (avoid DB hit on every request)
-    const cacheKey = `user:active:${jwtPayload.sub}`;
+    // Status checks (banned / deleted / inactive) — Redis-cached per user.
+    const cacheKey = `user:active:${sessionUser.id}`;
     const cached = await this.redis.get(cacheKey);
 
     if (cached === 'banned') {
@@ -50,7 +51,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     if (!cached) {
       // Cache miss — check database
       const user = await this.prisma.user.findUnique({
-        where: { id: jwtPayload.sub },
+        where: { id: sessionUser.id },
         select: {
           id: true,
           role: true,

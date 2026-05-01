@@ -44,7 +44,7 @@ export class KennelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a kennel profile (requires KENNEL business)' })
   apply(@Request() req: any, @Body() dto: ApplyKennelDto) {
-    return this.kennelService.applyForKennel(req.user.sub, dto);
+    return this.kennelService.applyForKennel(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -52,7 +52,7 @@ export class KennelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update kennel profile fields' })
   updateProfile(@Request() req: any, @Body() dto: UpdateKennelProfileDto) {
-    return this.kennelService.updateProfile(req.user.sub, dto);
+    return this.kennelService.updateProfile(req.user.id, dto);
   }
 
   // ── Units ───────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ export class KennelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new kennel unit' })
   createUnit(@Request() req: any, @Body() dto: CreateKennelUnitDto) {
-    return this.kennelService.createUnit(req.user.sub, dto);
+    return this.kennelService.createUnit(req.user.id, dto);
   }
 
   @Patch('units/:id')
@@ -75,7 +75,7 @@ export class KennelController {
     @Param('id') id: string,
     @Body() dto: UpdateKennelUnitDto,
   ) {
-    return this.kennelService.updateUnit(req.user.sub, id, dto);
+    return this.kennelService.updateUnit(req.user.id, id, dto);
   }
 
   @Put('units/:id/maintenance')
@@ -88,7 +88,7 @@ export class KennelController {
     @Param('id') id: string,
     @Body() dto: SetMaintenanceDto,
   ) {
-    return this.kennelService.setMaintenance(req.user.sub, id, dto.inMaintenanceUntil);
+    return this.kennelService.setMaintenance(req.user.id, id, dto.inMaintenanceUntil);
   }
 
   // ── Availability ────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ export class KennelController {
     @Param('id') id: string,
     @Body() dto: PerformIntakeDto,
   ) {
-    return this.kennelService.performIntake(req.user.sub, id, dto);
+    return this.kennelService.performIntake(req.user.id, id, dto);
   }
 
   @Post(':stayId/daily-log')
@@ -131,7 +131,7 @@ export class KennelController {
     @Param('stayId') stayId: string,
     @Body() dto: DailyLogDto,
   ) {
-    return this.kennelService.addDailyLog(req.user.sub, stayId, dto);
+    return this.kennelService.addDailyLog(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/discharge')
@@ -144,7 +144,7 @@ export class KennelController {
     @Param('stayId') stayId: string,
     @Body() dto: DischargeDto,
   ) {
-    return this.kennelService.discharge(req.user.sub, stayId, dto);
+    return this.kennelService.discharge(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/extend')
@@ -157,7 +157,7 @@ export class KennelController {
     @Param('stayId') stayId: string,
     @Body() dto: ExtendStayDto,
   ) {
-    return this.kennelService.requestExtension(req.user.sub, stayId, dto);
+    return this.kennelService.requestExtension(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/medical-hold')
@@ -170,6 +170,6 @@ export class KennelController {
     @Param('stayId') stayId: string,
     @Body() dto: MedicalHoldDto,
   ) {
-    return this.kennelService.initiateMedicalHold(req.user.sub, stayId, dto);
+    return this.kennelService.initiateMedicalHold(req.user.id, stayId, dto);
   }
 }

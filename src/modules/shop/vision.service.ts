@@ -1,7 +1,9 @@
 import { Injectable, Logger, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-interface VisionResult {
+// Exported so that shop.service / shop.controller method return types can name
+// it across module boundaries (TS4053).
+export interface VisionResult {
   productName: string;
   brand: string | null;
   category: string;

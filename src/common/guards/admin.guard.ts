@@ -5,52 +5,35 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
-import { RedisService } from '../services/redis.service';
 
-const ADMIN_ROLES: string[] = [UserRole.admin, UserRole.owner, UserRole.owner_restricted];
-const CACHE_TTL_SECONDS = 60;
+const ADMIN_ROLES: string[] = [
+  UserRole.admin,
+  UserRole.owner,
+  UserRole.owner_restricted,
+];
 
+/**
+ * AdminGuard — gates routes to admin / owner / owner_restricted users.
+ *
+ * Identity contract: relies on JwtAuthGuard having already populated
+ * `request.user = { id, email, roles, activeRole }` from the JWT payload.
+ * Roles come from the JWT — they are signed and trusted, so no DB hit
+ * is required.
+ */
 @Injectable()
 export class AdminGuard implements CanActivate {
-  constructor(
-    private prisma: PrismaService,
-    private redis: RedisService,
-  ) {}
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
-    const userId = request.user?.sub;
+    const sessionUser = request.user;
 
-    if (!userId) {
+    if (!sessionUser?.id) {
       throw new ForbiddenException('Access denied.');
     }
 
-    // Check Redis cache first
-    const cacheKey = `user:role:${userId}`;
-    const cachedRole = await this.redis.get(cacheKey);
+    const roles: string[] = sessionUser.roles ?? [];
+    const isAdmin = roles.some((role) => ADMIN_ROLES.includes(role));
 
-    if (cachedRole) {
-      if (!ADMIN_ROLES.includes(cachedRole)) {
-        throw new ForbiddenException('Admin access required.');
-      }
-      return true;
-    }
-
-    // Cache miss — query DB
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-
-    if (!user) {
-      throw new ForbiddenException('Access denied.');
-    }
-
-    // Cache the role for 60s
-    await this.redis.setex(cacheKey, CACHE_TTL_SECONDS, user.role);
-
-    if (!ADMIN_ROLES.includes(user.role)) {
+    if (!isAdmin) {
       throw new ForbiddenException('Admin access required.');
     }
 

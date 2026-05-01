@@ -48,7 +48,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Apply to register a pet hotel profile' })
   apply(@Request() req: any, @Body() dto: ApplyPetHotelDto) {
-    return this.petHotelService.applyForPetHotel(req.user.sub, dto);
+    return this.petHotelService.applyForPetHotel(req.user.id, dto);
   }
 
   @Patch('profile')
@@ -56,7 +56,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update pet hotel profile' })
   updateProfile(@Request() req: any, @Body() dto: UpdatePetHotelProfileDto) {
-    return this.petHotelService.updateProfile(req.user.sub, dto);
+    return this.petHotelService.updateProfile(req.user.id, dto);
   }
 
   @Get('me')
@@ -64,7 +64,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current user pet hotel profile' })
   getMyProfile(@Request() req: any) {
-    return this.petHotelService.getMyProfile(req.user.sub);
+    return this.petHotelService.getMyProfile(req.user.id);
   }
 
   @Get(':id')
@@ -100,7 +100,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a room type' })
   createRoomType(@Request() req: any, @Param('id') id: string, @Body() dto: CreateRoomTypeDto) {
-    return this.petHotelService.createRoomType(req.user.sub, id, dto);
+    return this.petHotelService.createRoomType(req.user.id, id, dto);
   }
 
   @Patch('room-types/:id')
@@ -108,7 +108,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a room type' })
   updateRoomType(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateRoomTypeDto) {
-    return this.petHotelService.updateRoomType(req.user.sub, id, dto);
+    return this.petHotelService.updateRoomType(req.user.id, id, dto);
   }
 
   // ── Rooms ───────────────────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a room' })
   createRoom(@Request() req: any, @Param('id') id: string, @Body() dto: CreateRoomDto) {
-    return this.petHotelService.createRoom(req.user.sub, id, dto);
+    return this.petHotelService.createRoom(req.user.id, id, dto);
   }
 
   @Patch('rooms/:id')
@@ -126,7 +126,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a room' })
   updateRoom(@Request() req: any, @Param('id') id: string, @Body() dto: UpdateRoomDto) {
-    return this.petHotelService.updateRoom(req.user.sub, id, dto);
+    return this.petHotelService.updateRoom(req.user.id, id, dto);
   }
 
   // ── Packages ────────────────────────────────────────────────────────────────
@@ -136,7 +136,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a package' })
   createPackage(@Request() req: any, @Param('id') id: string, @Body() dto: CreatePackageDto) {
-    return this.petHotelService.createPackage(req.user.sub, id, dto);
+    return this.petHotelService.createPackage(req.user.id, id, dto);
   }
 
   @Patch('packages/:id')
@@ -144,7 +144,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a package' })
   updatePackage(@Request() req: any, @Param('id') id: string, @Body() dto: UpdatePackageDto) {
-    return this.petHotelService.updatePackage(req.user.sub, id, dto);
+    return this.petHotelService.updatePackage(req.user.id, id, dto);
   }
 
   // ── Availability ────────────────────────────────────────────────────────────
@@ -170,7 +170,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Pay balance for a stay' })
   payBalance(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: PayBalanceDto) {
-    return this.petHotelService.payBalance(req.user.sub, stayId, dto);
+    return this.petHotelService.payBalance(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/intake')
@@ -178,7 +178,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Perform pet intake' })
   performIntake(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: PerformIntakeDto) {
-    return this.petHotelService.performIntake(req.user.sub, stayId, dto);
+    return this.petHotelService.performIntake(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/daily-log')
@@ -186,7 +186,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add daily log' })
   addDailyLog(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: DailyLogDto) {
-    return this.petHotelService.addDailyLog(req.user.sub, stayId, dto);
+    return this.petHotelService.addDailyLog(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/discharge')
@@ -194,7 +194,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Discharge pet' })
   discharge(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: DischargeDto) {
-    return this.petHotelService.discharge(req.user.sub, stayId, dto);
+    return this.petHotelService.discharge(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/extend')
@@ -202,7 +202,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Request stay extension' })
   extendStay(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: ExtendStayDto) {
-    return this.petHotelService.requestExtension(req.user.sub, stayId, dto);
+    return this.petHotelService.requestExtension(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/medical-hold')
@@ -210,7 +210,7 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Initiate medical hold' })
   medicalHold(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: MedicalHoldDto) {
-    return this.petHotelService.initiateMedicalHold(req.user.sub, stayId, dto);
+    return this.petHotelService.initiateMedicalHold(req.user.id, stayId, dto);
   }
 
   @Post(':stayId/add-service')
@@ -218,6 +218,6 @@ export class PetHotelController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add in-stay service' })
   addService(@Request() req: any, @Param('stayId') stayId: string, @Body() dto: AddServiceDto) {
-    return this.petHotelService.addService(req.user.sub, stayId, dto);
+    return this.petHotelService.addService(req.user.id, stayId, dto);
   }
 }

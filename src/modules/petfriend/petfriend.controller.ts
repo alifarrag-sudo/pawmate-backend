@@ -60,7 +60,7 @@ export class PetFriendController {
       'Creates a PetFriend profile shell. Complete the profile incrementally via PATCH /petfriend/profile and document uploads.',
   })
   apply(@Request() req: any, @Body() _dto: ApplyPetFriendDto) {
-    return this.petFriendService.applyForPetFriend(req.user.sub);
+    return this.petFriendService.applyForPetFriend(req.user.id);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -75,7 +75,7 @@ export class PetFriendController {
       'Incrementally update profile fields. When all required fields are complete the profile is auto-approved.',
   })
   updateProfile(@Request() req: any, @Body() dto: UpdatePetFriendProfileDto) {
-    return this.petFriendService.updateProfile(req.user.sub, dto);
+    return this.petFriendService.updateProfile(req.user.id, dto);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ export class PetFriendController {
       );
     }
     return this.petFriendService.uploadDocument(
-      req.user.sub,
+      req.user.id,
       field as DocumentField,
       file.buffer,
       file.mimetype,
@@ -145,7 +145,7 @@ export class PetFriendController {
       'Returns full profile with completionPercent, missingFields[], and nextStep hint.',
   })
   getMyProfile(@Request() req: any) {
-    return this.petFriendService.getMyProfile(req.user.sub);
+    return this.petFriendService.getMyProfile(req.user.id);
   }
 
   // ──────────────────────────────────────────────────────────────────────────
@@ -174,6 +174,6 @@ export class PetFriendController {
       'Cashout available balance immediately. A 2% processing fee applies. Minimum 100 EGP required.',
   })
   instantCashout(@Request() req: any, @Body() _dto: InstantCashoutDto) {
-    return this.petFriendService.instantCashout(req.user.sub);
+    return this.petFriendService.instantCashout(req.user.id);
   }
 }
