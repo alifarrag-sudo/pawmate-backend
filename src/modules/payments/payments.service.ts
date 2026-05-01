@@ -2,9 +2,12 @@ import {
   Injectable,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
   ConflictException,
+  UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymobService } from './paymob.service';
@@ -21,6 +24,7 @@ export class PaymentsService {
     private paymob: PaymobService,
     private notifications: NotificationsService,
     private eventEmitter: EventEmitter2,
+    private config: ConfigService,
   ) {}
 
   // ============================================================
@@ -283,6 +287,172 @@ export class PaymentsService {
   }
 
   // ============================================================
+  // PAYMOB PAYMENT INTENT (mobile + web pre-payment flow)
+  // ============================================================
+
+  /**
+   * Create a Paymob payment intent for an authenticated parent's booking.
+   *
+   * Behaviour:
+   *   • Loads the booking, asserts the requesting user owns it.
+   *   • Asserts the booking is in a payable state (paymentStatus === 'pending').
+   *   • If PAYMOB_API_KEY is set, creates a real Paymob order + payment key
+   *     and returns the iframe URL the client embeds.
+   *   • If PAYMOB_API_KEY is unset (dev/staging), returns a mock intent the
+   *     client recognises as `isMock: true`. The mobile sandbox UI uses this
+   *     to simulate a successful payment without going through Paymob.
+   *
+   * Side effects: persists `paymobIntentId` and `paymobOrderId` on the booking.
+   */
+  async createPaymobIntent(
+    userId: string,
+    bookingId: string,
+  ): Promise<{
+    intentId: string;
+    paymentToken: string | null;
+    iframeUrl: string | null;
+    amount: number;
+    currency: 'EGP';
+    isMock?: boolean;
+  }> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      include: { parent: true },
+    });
+    if (!booking) {
+      throw new NotFoundException({ error: 'BOOKING_NOT_FOUND', message: 'Booking not found.' });
+    }
+    if (booking.parentId !== userId) {
+      throw new ForbiddenException({
+        error: 'NOT_BOOKING_OWNER',
+        message: 'You do not own this booking.',
+      });
+    }
+    if (booking.paymentStatus !== 'pending') {
+      throw new UnprocessableEntityException({
+        error: 'BOOKING_NOT_PAYABLE',
+        message: `Booking payment state is "${booking.paymentStatus}" — only pending bookings can request a new intent.`,
+      });
+    }
+
+    const amountEgp = Math.round(Number(booking.totalPrice));
+    const amountCents = amountEgp * 100;
+    const apiKey = this.config.get<string>('PAYMOB_API_KEY');
+
+    // ── Mock mode (no Paymob credentials) ────────────────────────────────
+    if (!apiKey) {
+      const intentId = `mock_${booking.id}`;
+      const paymentToken = `mock_token_${Date.now()}`;
+      await this.prisma.booking.update({
+        where: { id: booking.id },
+        data: { paymobIntentId: intentId },
+      });
+      this.logger.warn(
+        `Paymob mock intent issued for booking ${booking.id} (PAYMOB_API_KEY not set)`,
+      );
+      return {
+        intentId,
+        paymentToken,
+        iframeUrl: null,
+        amount: amountEgp,
+        currency: 'EGP',
+        isMock: true,
+      };
+    }
+
+    // ── Real Paymob authorization ────────────────────────────────────────
+    const result = await this.paymob.authorizePayment({
+      amountCents,
+      currency: 'EGP',
+      orderId: booking.id,
+      customerFirstName: booking.parent?.firstName ?? 'Pet',
+      customerLastName: booking.parent?.lastName ?? 'Parent',
+      customerPhone: booking.parent?.phone ?? '+200000000000',
+    });
+
+    if (!result.success || !result.transactionId) {
+      throw new BadRequestException({
+        error: 'PAYMOB_AUTHORIZATION_FAILED',
+        message: result.error ?? 'Paymob authorization failed. Please try again.',
+      });
+    }
+
+    const intentId = result.transactionId;
+    await this.prisma.booking.update({
+      where: { id: booking.id },
+      data: { paymobIntentId: intentId },
+    });
+
+    const iframeId = this.config.get<string>('PAYMOB_IFRAME_ID');
+    const iframeUrl = iframeId
+      ? `https://accept.paymob.com/api/acceptance/iframes/${iframeId}?payment_token=${intentId}`
+      : null;
+
+    return {
+      intentId,
+      paymentToken: intentId,
+      iframeUrl,
+      amount: amountEgp,
+      currency: 'EGP',
+    };
+  }
+
+  /**
+   * Read-only payment status for a booking, scoped to the owning parent.
+   * Mobile polls this after the Paymob webview redirects on success/failure.
+   */
+  async getPaymobStatus(
+    userId: string,
+    bookingId: string,
+  ): Promise<{
+    status: 'pending' | 'paid' | 'failed';
+    bookingId: string;
+    amount: number;
+    paidAt: string | null;
+  }> {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: {
+        id: true,
+        parentId: true,
+        totalPrice: true,
+        paymentStatus: true,
+        paidAt: true,
+      },
+    });
+    if (!booking) {
+      throw new NotFoundException({ error: 'BOOKING_NOT_FOUND', message: 'Booking not found.' });
+    }
+    if (booking.parentId !== userId) {
+      throw new ForbiddenException({
+        error: 'NOT_BOOKING_OWNER',
+        message: 'You do not own this booking.',
+      });
+    }
+
+    // Map the rich PaymentStatus enum onto the simple tri-state the mobile
+    // client expects. Anything in the success-money-in path → paid.
+    let status: 'pending' | 'paid' | 'failed' = 'pending';
+    if (booking.paymentStatus === 'captured' || booking.paymentStatus === 'authorized') {
+      status = 'paid';
+    } else if (
+      booking.paymentStatus === 'failed' ||
+      booking.paymentStatus === 'voided' ||
+      booking.paymentStatus === 'refunded' ||
+      booking.paymentStatus === 'partially_refunded'
+    ) {
+      status = 'failed';
+    }
+
+    return {
+      status,
+      bookingId: booking.id,
+      amount: Math.round(Number(booking.totalPrice)),
+      paidAt: booking.paidAt ? booking.paidAt.toISOString() : null,
+    };
+  }
+
+  // ============================================================
   // PAYMOB WEBHOOK HANDLER
   // ============================================================
 
@@ -320,13 +490,23 @@ export class PaymentsService {
       if (orderId && success) {
         const booking = await this.prisma.booking.findUnique({ where: { id: orderId } });
         if (booking && booking.paymentStatus === 'pending') {
+          const paidAt = new Date();
           await this.prisma.booking.update({
             where: { id: orderId },
             data: {
               paymentStatus: 'authorized',
               paymentReference: transactionId,
-              paymentAuthorizedAt: new Date(),
+              paymentAuthorizedAt: paidAt,
+              paidAt,
+              paymobOrderId: obj?.order?.id?.toString() ?? null,
             },
+          });
+          this.eventEmitter.emit('booking.payment_succeeded', {
+            bookingId: booking.id,
+            parentId: booking.parentId,
+            transactionId,
+            amount: Number(booking.totalPrice),
+            paidAt: paidAt.toISOString(),
           });
         }
       }

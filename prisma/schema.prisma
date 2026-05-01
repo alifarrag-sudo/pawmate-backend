@@ -1841,6 +1841,13 @@ model Booking {
   refundAmount        Decimal?       @db.Decimal(10, 2)
   refundReason        String?
 
+  // Paymob intent / order tracking — set when client requests an intent and
+  // updated by the webhook on success. paidAt is the canonical "money in"
+  // timestamp surfaced to the mobile client.
+  paymobIntentId String?
+  paymobOrderId  String?
+  paidAt         DateTime?
+
   // Cancellation
   cancelledById      String?
   cancelledBy        User?             @relation("CancelledBy", fields: [cancelledById], references: [id])

@@ -1,6 +1,6 @@
-import { Controller, UseGuards, Get, Post, Body, Headers, Request } from '@nestjs/common';
+import { Controller, UseGuards, Get, Post, Body, Headers, Param, Request } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 
 @ApiTags('payments')
@@ -52,6 +52,24 @@ export class PaymentsController {
     @Body('method') method: string,
   ) {
     return this.paymentsService.requestWithdrawal(req.user?.id, amount, method);
+  }
+
+  // ── Paymob payment intent + status (mobile + web pre-payment flow) ──
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('paymob/intent')
+  @ApiOperation({ summary: 'Create Paymob payment intent for a booking' })
+  createPaymobIntent(@Request() req: any, @Body('bookingId') bookingId: string) {
+    return this.paymentsService.createPaymobIntent(req.user?.id, bookingId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('paymob/status/:bookingId')
+  @ApiOperation({ summary: 'Get current Paymob payment status for a booking' })
+  getPaymobStatus(@Request() req: any, @Param('bookingId') bookingId: string) {
+    return this.paymentsService.getPaymobStatus(req.user?.id, bookingId);
   }
 
   // No JWT — Paymob signs with HMAC. Validation in service layer.
