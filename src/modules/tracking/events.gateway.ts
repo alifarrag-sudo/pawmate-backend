@@ -12,6 +12,7 @@ import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TrackingService } from './tracking.service';
 
 @WebSocketGateway({
   cors: {
@@ -28,6 +29,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   constructor(
     private jwtService: JwtService,
     private prisma: PrismaService,
+    private trackingService: TrackingService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -137,6 +139,70 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @SubscribeMessage('leave:walk')
   handleLeaveWalk(@ConnectedSocket() client: Socket, @MessageBody() sessionId: string) {
     client.leave(`walk:${sessionId}`);
+  }
+
+  /**
+   * walk:addPoint — sitter streams a single GPS point during a live walk.
+   *
+   * Persists to walk_tracking_points via TrackingService.addTrackingPoints
+   * (which validates that the caller is the session's petFriend), then
+   * broadcasts the latest point to the `walk:${sessionId}` room as
+   * `walk:locationUpdate` so the parent's map updates in real time.
+   *
+   * Errors are surfaced to the emitter only (not broadcast) so private
+   * details don't leak to the parent watching the walk.
+   */
+  @SubscribeMessage('walk:addPoint')
+  async handleAddWalkPoint(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      sessionId: string;
+      lat: number;
+      lng: number;
+      accuracyM?: number;
+      speedMs?: number;
+      altitudeM?: number;
+      recordedAt?: string;
+    },
+  ) {
+    const userId = client.data.userId;
+    if (!userId) {
+      client.emit('error', { message: 'Not authenticated.' });
+      return;
+    }
+    if (!data?.sessionId || typeof data.lat !== 'number' || typeof data.lng !== 'number') {
+      client.emit('error', { message: 'walk:addPoint requires sessionId, lat, lng.' });
+      return;
+    }
+
+    try {
+      await this.trackingService.addTrackingPoints(data.sessionId, userId, [
+        {
+          lat: data.lat,
+          lng: data.lng,
+          accuracyM: data.accuracyM,
+          speedMs: data.speedMs,
+          altitudeM: data.altitudeM,
+          recordedAt: data.recordedAt ?? new Date().toISOString(),
+        } as any,
+      ]);
+
+      // Broadcast to the walk room so the parent + admin observers see the
+      // update immediately. Private fields like fraud flags are NOT included
+      // in the public payload.
+      this.server.to(`walk:${data.sessionId}`).emit('walk:locationUpdate', {
+        sessionId: data.sessionId,
+        lat: data.lat,
+        lng: data.lng,
+        timestamp: data.recordedAt ?? new Date().toISOString(),
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `walk:addPoint failed for session ${data.sessionId}: ${err?.message ?? err}`,
+      );
+      client.emit('error', { message: err?.message ?? 'Could not record GPS point.' });
+    }
   }
 
   // FIX 14: Replace Date.now() with randomUUID() to avoid ID collisions
