@@ -3453,3 +3453,44 @@ model WebApplicationDraft {
   @@index([email])
   @@map("web_application_drafts")
 }
+
+// ============================================================
+// ADMIN APPROVALS
+// ============================================================
+//
+// Agent action proposals that require human (Ali / John) sign-off before
+// execution. Created by AI agents via POST /admin/approvals; resolved
+// (approved or rejected) by an owner via POST /admin/approvals/:id/resolve.
+// The web /owners/approvals dashboard lists pending entries and surfaces
+// the resolve action.
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model Approval {
+  id         String         @id @default(cuid())
+  agentId    String
+  actionType String
+  payload    Json
+  reasoning  String?        @db.Text
+  status     ApprovalStatus @default(PENDING)
+  // Routing flag: 'ali_only' | 'ali_or_john'. Only Ali can resolve
+  // ali_only items; john (owner_restricted) can resolve ali_or_john.
+  routing    String         @default("ali_or_john")
+  resolvedBy String?
+  // Plain-string resolution outcome for downstream consumers that don't
+  // know about the enum: 'approved' | 'rejected'.
+  resolution String?
+  comment    String?        @db.Text
+  createdAt  DateTime       @default(now())
+  resolvedAt DateTime?
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([agentId, createdAt(sort: Desc)])
+  @@index([routing, status])
+  @@map("approvals")
+}
