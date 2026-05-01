@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -243,5 +243,224 @@ export class PetsService {
       },
     });
     return updated;
+  }
+
+  // ==========================================================================
+  // MEDICAL SUBRESOURCES
+  //
+  // Each method below verifies the caller owns the pet before reading or
+  // writing any of the related rows. The check uses the same `findFirst({
+  // where: { id, ownerId } })` pattern as findOne above.
+  // ==========================================================================
+
+  /** Verify ownership and return the pet row (or throw NotFound). */
+  private async assertOwnedPet(ownerId: string, petId: string) {
+    const pet = await this.prisma.pet.findFirst({
+      where: { id: petId, ownerId, isActive: true },
+      select: { id: true },
+    });
+    if (!pet) throw new NotFoundException('Pet not found');
+    return pet;
+  }
+
+  // ─── Vaccinations ─────────────────────────────────────────────────────────
+
+  async listVaccinations(ownerId: string, petId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    return this.prisma.petVaccination.findMany({
+      where: { petId },
+      orderBy: { administeredDate: 'desc' },
+    });
+  }
+
+  async addVaccination(
+    ownerId: string,
+    petId: string,
+    dto: {
+      vaccineName?: string;
+      name?: string; // alias accepted from older mobile clients
+      administeredDate?: string | Date;
+      date?: string | Date; // alias
+      expiryDate?: string | Date | null;
+      nextDueDate?: string | Date | null; // alias
+      documentUrl?: string;
+      notes?: string;
+      vetName?: string;
+    },
+  ) {
+    await this.assertOwnedPet(ownerId, petId);
+    const vaccineName = dto.vaccineName ?? dto.name;
+    if (!vaccineName) {
+      throw new BadRequestException('vaccineName is required');
+    }
+    const administeredAt = dto.administeredDate ?? dto.date ?? new Date();
+    const expires = dto.expiryDate ?? dto.nextDueDate ?? null;
+    return this.prisma.petVaccination.create({
+      data: {
+        petId,
+        vaccineName,
+        administeredDate: new Date(administeredAt),
+        expiryDate: expires ? new Date(expires) : null,
+        documentUrl: dto.documentUrl,
+        notes: dto.notes ?? (dto.vetName ? `Vet: ${dto.vetName}` : null),
+      },
+    });
+  }
+
+  async deleteVaccination(ownerId: string, petId: string, vaccinationId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    const row = await this.prisma.petVaccination.findFirst({
+      where: { id: vaccinationId, petId },
+    });
+    if (!row) throw new NotFoundException('Vaccination not found');
+    await this.prisma.petVaccination.delete({ where: { id: vaccinationId } });
+    return { success: true };
+  }
+
+  // ─── Medications ──────────────────────────────────────────────────────────
+
+  async listMedications(ownerId: string, petId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    return this.prisma.petMedication.findMany({
+      where: { petId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async addMedication(
+    ownerId: string,
+    petId: string,
+    dto: {
+      name: string;
+      medicationType?: string;
+      dose?: string;
+      dosage?: string; // alias
+      unit?: string;
+      frequency?: string;
+      adminTimes?: string[];
+      startDate?: string | Date;
+      endDate?: string | Date;
+      notes?: string;
+    },
+  ) {
+    await this.assertOwnedPet(ownerId, petId);
+    if (!dto?.name) throw new BadRequestException('name is required');
+    return this.prisma.petMedication.create({
+      data: {
+        petId,
+        name: dto.name,
+        medicationType: (dto.medicationType as any) ?? 'pill',
+        dosage: dto.dose ?? dto.dosage ?? null,
+        unit: dto.unit ?? null,
+        frequency: (dto.frequency as any) ?? 'once_daily',
+        adminTimes: dto.adminTimes ?? ['08:00'],
+        startDate: dto.startDate ? new Date(dto.startDate) : null,
+        endDate: dto.endDate ? new Date(dto.endDate) : null,
+        notes: dto.notes ?? null,
+        isActive: true,
+      },
+    });
+  }
+
+  async deleteMedication(ownerId: string, petId: string, medicationId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    const row = await this.prisma.petMedication.findFirst({
+      where: { id: medicationId, petId },
+    });
+    if (!row) throw new NotFoundException('Medication not found');
+    // Soft-delete: medications carry historical care logs, so we flip
+    // isActive rather than dropping the row. Same pattern findByOwner uses.
+    await this.prisma.petMedication.update({
+      where: { id: medicationId },
+      data: { isActive: false },
+    });
+    return { success: true };
+  }
+
+  // ─── Schedules (feeding / walk / medication / grooming / other) ──────────
+
+  async listSchedules(ownerId: string, petId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    return this.prisma.petSchedule.findMany({
+      where: { petId, isActive: true },
+      orderBy: [{ scheduleType: 'asc' }, { scheduledTime: 'asc' }],
+    });
+  }
+
+  async addSchedule(
+    ownerId: string,
+    petId: string,
+    dto: {
+      scheduleType?: string;
+      scheduledTime?: string;
+      time?: string; // alias
+      durationMinutes?: number;
+      foodType?: string;
+      foodAmount?: string;
+      notes?: string;
+    },
+  ) {
+    await this.assertOwnedPet(ownerId, petId);
+    if (!dto?.scheduleType) throw new BadRequestException('scheduleType is required');
+    return this.prisma.petSchedule.create({
+      data: {
+        petId,
+        scheduleType: dto.scheduleType as any,
+        scheduledTime: dto.scheduledTime ?? dto.time ?? '08:00',
+        durationMinutes: dto.durationMinutes ?? null,
+        foodType: dto.foodType ?? null,
+        foodAmount: dto.foodAmount ?? null,
+        notes: dto.notes ?? null,
+        isActive: true,
+      },
+    });
+  }
+
+  // ─── Behavior (1:1) ───────────────────────────────────────────────────────
+
+  async getBehavior(ownerId: string, petId: string) {
+    await this.assertOwnedPet(ownerId, petId);
+    return this.prisma.petBehavior.findUnique({ where: { petId } });
+  }
+
+  async upsertBehavior(
+    ownerId: string,
+    petId: string,
+    dto: {
+      temperamentTags?: string[];
+      goodWithDogs?: string;
+      goodWithCats?: string;
+      goodWithKids?: string;
+      trainingLevel?: string;
+      energyLevel?: string;
+      behaviorNotes?: string;
+      fearTriggers?: string[];
+    },
+  ) {
+    await this.assertOwnedPet(ownerId, petId);
+    return this.prisma.petBehavior.upsert({
+      where: { petId },
+      create: {
+        petId,
+        temperamentTags: dto.temperamentTags ?? [],
+        goodWithDogs: (dto.goodWithDogs as any) ?? 'yes',
+        goodWithCats: (dto.goodWithCats as any) ?? 'yes',
+        goodWithKids: (dto.goodWithKids as any) ?? 'yes',
+        trainingLevel: (dto.trainingLevel as any) ?? 'none',
+        energyLevel: (dto.energyLevel as any) ?? 'medium',
+        behaviorNotes: dto.behaviorNotes ?? null,
+        fearTriggers: dto.fearTriggers ?? [],
+      },
+      update: {
+        ...(dto.temperamentTags !== undefined && { temperamentTags: dto.temperamentTags }),
+        ...(dto.goodWithDogs !== undefined && { goodWithDogs: dto.goodWithDogs as any }),
+        ...(dto.goodWithCats !== undefined && { goodWithCats: dto.goodWithCats as any }),
+        ...(dto.goodWithKids !== undefined && { goodWithKids: dto.goodWithKids as any }),
+        ...(dto.trainingLevel !== undefined && { trainingLevel: dto.trainingLevel as any }),
+        ...(dto.energyLevel !== undefined && { energyLevel: dto.energyLevel as any }),
+        ...(dto.behaviorNotes !== undefined && { behaviorNotes: dto.behaviorNotes }),
+        ...(dto.fearTriggers !== undefined && { fearTriggers: dto.fearTriggers }),
+      },
+    });
   }
 }
