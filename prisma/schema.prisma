@@ -801,6 +801,9 @@ model User {
   businessProfile BusinessProfile?
   teamMemberships TeamMember[]     @relation("TeamMemberships")
 
+  // Chat (Prompt: persist chat messages, history endpoint)
+  chatMessagesSent ChatMessage[] @relation("ChatSender")
+
   // DEFERRED: Community feature
   adoptionPosts        AdoptionPost[]      @relation("AdoptionPoster")
   adoptionMessagesSent AdoptionMessage[]   @relation("AdoptionMsgSender")
@@ -1887,6 +1890,7 @@ model Booking {
   walkSessions        WalkSession[]
   review              Review?
   transactions        PaymentTransaction[]
+  messages            ChatMessage[]
   payouts             PetFriendPayout[]
   careLogs            CareLog[]
   overtimeLog         OvertimeLog?
@@ -3493,4 +3497,31 @@ model Approval {
   @@index([agentId, createdAt(sort: Desc)])
   @@index([routing, status])
   @@map("approvals")
+}
+
+// ============================================================
+// CHAT MESSAGES
+// ============================================================
+//
+// Per-booking chat history. Each row is a single message between the
+// booking's parent and provider. Persisted by the EventsGateway's
+// `chat:send` handler and read back by GET /chat/messages/:bookingId.
+
+model ChatMessage {
+  id         String    @id @default(cuid())
+  bookingId  String
+  booking    Booking   @relation(fields: [bookingId], references: [id])
+  senderId   String
+  sender     User      @relation("ChatSender", fields: [senderId], references: [id])
+  // 'parent' | 'provider' — derived from sender's relation to the booking.
+  // Stored verbatim so the chat UI can render side-of-conversation without
+  // re-resolving the booking on every load.
+  senderRole String
+  content    String    @db.Text
+  readAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([bookingId, createdAt])
+  @@index([bookingId, readAt])
+  @@map("chat_messages")
 }

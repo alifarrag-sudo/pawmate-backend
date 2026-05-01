@@ -12,6 +12,7 @@ import { PetsModule } from './modules/pets/pets.module';
 import { SearchModule } from './modules/search/search.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -86,6 +87,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     SearchModule,
     BookingsModule,
     TrackingModule,
+    ChatModule,
     PaymentsModule,
     ReviewsModule,
     NotificationsModule,

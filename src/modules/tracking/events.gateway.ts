@@ -1,4 +1,3 @@
-import { randomUUID } from 'crypto';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -13,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TrackingService } from './tracking.service';
+import { ChatService } from '../chat/chat.service';
 
 @WebSocketGateway({
   cors: {
@@ -30,6 +30,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private jwtService: JwtService,
     private prisma: PrismaService,
     private trackingService: TrackingService,
+    private chatService: ChatService,
   ) {}
 
   async handleConnection(client: Socket) {
@@ -205,19 +206,63 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // FIX 14: Replace Date.now() with randomUUID() to avoid ID collisions
+  /**
+   * chat:send — receive a message from a connected client, persist it via
+   * ChatService (which validates booking membership), then broadcast the
+   * stored row to the booking room as `chat:message`.
+   *
+   * Accepts both the new shape `{ bookingId, content }` and the legacy
+   * `{ conversationId, message }` so older clients keep working during
+   * the rollout. The emitted payload includes BOTH `content` (canonical)
+   * and `message` (legacy) so receivers on either codepath read the body.
+   */
   @SubscribeMessage('chat:send')
-  handleChatMessage(
+  async handleChatMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { conversationId: string; message: string },
+    @MessageBody()
+    data: {
+      bookingId?: string;
+      conversationId?: string;
+      content?: string;
+      message?: string;
+    },
   ) {
     const userId = client.data.userId;
-    this.server.to(`booking:${data.conversationId}`).emit('chat:message', {
-      id: randomUUID(),
-      senderId: userId,
-      message: data.message,
-      timestamp: new Date().toISOString(),
-    });
+    if (!userId) {
+      client.emit('error', { message: 'Not authenticated.' });
+      return;
+    }
+    const bookingId = data?.bookingId ?? data?.conversationId;
+    const content = data?.content ?? data?.message;
+    if (!bookingId || !content) {
+      client.emit('error', { message: 'chat:send requires bookingId + content.' });
+      return;
+    }
+
+    try {
+      const saved = await this.chatService.createMessage(bookingId, userId, content);
+
+      this.server.to(`booking:${bookingId}`).emit('chat:message', {
+        id: saved.id,
+        bookingId: saved.bookingId,
+        senderId: saved.senderId,
+        senderRole: saved.senderRole,
+        content: saved.content,
+        // Legacy aliases — older mobile clients read these.
+        message: saved.content,
+        timestamp: saved.createdAt.toISOString(),
+        createdAt: saved.createdAt.toISOString(),
+      });
+    } catch (err: any) {
+      this.logger.warn(
+        `chat:send failed for booking ${bookingId} by user ${userId}: ${err?.message ?? err}`,
+      );
+      // Surface only to the emitting socket — never broadcast errors to
+      // the room (other party shouldn't see auth failures).
+      client.emit('error', {
+        message: err?.message ?? 'Could not send message.',
+      });
+    }
   }
 
   // Called by other services to emit events

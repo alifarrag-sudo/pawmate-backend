@@ -7,11 +7,13 @@ import { FraudDetectionService } from './fraud.service';
 import { EventsGateway } from './events.gateway';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RedisModule } from '../../common/redis.module';
+import { ChatModule } from '../chat/chat.module';
 
 @Module({
   imports: [
     PrismaModule,
     RedisModule,
+    ChatModule, // EventsGateway calls ChatService.createMessage on chat:send
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
