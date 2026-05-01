@@ -459,10 +459,21 @@ export class PaymentsService {
   async handlePaymobWebhook(body: any, signature: string): Promise<{ received: boolean }> {
     try {
       const isValid = this.paymob.validateWebhook(body, signature);
-      if (!isValid) {
+
+      // Dev-only escape hatch: if PAYMOB_API_KEY is unset (the same gate the
+      // /paymob/intent endpoint uses to return a mock intent), AND the caller
+      // sends the mock-bypass signature, allow the payload through. In
+      // production PAYMOB_API_KEY is always set, so this path is unreachable.
+      const apiKey = this.config.get<string>('PAYMOB_API_KEY');
+      const isMockBypass = !apiKey && signature === 'mock-bypass';
+
+      if (!isValid && !isMockBypass) {
         // Return 200 + log — Paymob retries forever on non-2xx
         this.logger.warn('Invalid Paymob webhook signature — ignoring payload');
         return { received: true };
+      }
+      if (isMockBypass) {
+        this.logger.warn('Paymob webhook accepted via mock-bypass (dev mode, PAYMOB_API_KEY unset)');
       }
 
       const { obj } = body;

@@ -302,5 +302,42 @@ describe('PaymentsService — Paymob intent / status / webhook', () => {
       expect(prisma.booking.update).not.toHaveBeenCalled();
       expect(emitter.emit).not.toHaveBeenCalled();
     });
+
+    it('mock-bypass: flips booking to paid when signature is "mock-bypass" AND PAYMOB_API_KEY is unset', async () => {
+      paymob.validateWebhook.mockReturnValue(false); // bogus mock HMAC won't validate
+      config.get.mockImplementation((key: string) =>
+        key === 'PAYMOB_API_KEY' ? undefined : undefined,
+      );
+      prisma.processedWebhookEvent.create.mockResolvedValue({});
+      prisma.booking.findUnique.mockResolvedValue({
+        id: 'b1',
+        parentId: 'parent-1',
+        totalPrice: 350 as any,
+        paymentStatus: 'pending',
+      });
+      prisma.booking.update.mockResolvedValue({});
+
+      const result = await service.handlePaymobWebhook(validPayload, 'mock-bypass');
+
+      expect(result).toEqual({ received: true });
+      expect(prisma.booking.update).toHaveBeenCalled();
+      expect(emitter.emit).toHaveBeenCalledWith(
+        'booking.payment_succeeded',
+        expect.objectContaining({ bookingId: 'b1' }),
+      );
+    });
+
+    it('mock-bypass: REFUSES to bypass HMAC when PAYMOB_API_KEY is set (production)', async () => {
+      paymob.validateWebhook.mockReturnValue(false);
+      config.get.mockImplementation((key: string) =>
+        key === 'PAYMOB_API_KEY' ? 'pk_live_xxx' : undefined,
+      );
+
+      const result = await service.handlePaymobWebhook(validPayload, 'mock-bypass');
+
+      expect(result).toEqual({ received: true });
+      expect(prisma.booking.update).not.toHaveBeenCalled();
+      expect(emitter.emit).not.toHaveBeenCalled();
+    });
   });
 });
