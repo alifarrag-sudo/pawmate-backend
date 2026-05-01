@@ -4,6 +4,7 @@ import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { RecordPickupDto } from '../pricing/dto/record-pickup.dto';
 import { PricingService } from '../pricing/pricing.service';
+import { OperatorService } from '../providers/operator.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @ApiTags('bookings')
@@ -14,6 +15,7 @@ export class BookingsController {
   constructor(
     private bookingsService: BookingsService,
     private pricingService: PricingService,
+    private operatorService: OperatorService,
   ) {}
 
   @Post()
@@ -39,6 +41,32 @@ export class BookingsController {
     @Query('page') page?: string,
   ) {
     return this.bookingsService.getMyBookings(req.user?.id, role, status, page ? +page : 1);
+  }
+
+  // Operator-scoped list — bookings across the calling operator's team.
+  // Must be declared BEFORE @Get(':id') to avoid 'operator' being captured
+  // as a booking id.
+  @Get('operator')
+  @ApiOperation({ summary: 'Bookings across the operator\'s team' })
+  getOperatorBookings(
+    @Request() req: any,
+    @Query('status') status?: string,
+    @Query('memberId') memberId?: string,
+    @Query('serviceType') serviceType?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.operatorService.listBookings(req.user?.id, {
+      status,
+      memberId,
+      serviceType,
+      from,
+      to,
+      page: page ? +page : 1,
+      limit: limit ? +limit : 20,
+    });
   }
 
   @Get(':id')

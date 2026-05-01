@@ -7,6 +7,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { RedisModule } from '../../common/redis.module';
 import { CareLogModule } from '../care-log/care-log.module';
 import { PricingModule } from '../pricing/pricing.module';
+import { ProvidersModule } from '../providers/providers.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PricingModule } from '../pricing/pricing.module';
     RedisModule,
     CareLogModule,
     PricingModule,
+    ProvidersModule, // exports OperatorService for /bookings/operator
   ],
   controllers: [BookingsController],
   providers: [BookingsService, MatchingService, PricingService],
