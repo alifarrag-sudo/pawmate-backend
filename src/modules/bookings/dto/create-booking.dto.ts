@@ -15,15 +15,20 @@ import {
   ArrayMaxSize,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ServiceType } from '@prisma/client';
 
 export class CreateBookingDto {
   @ApiProperty({ description: 'Sitter user ID' })
   @IsUUID()
   petFriendId: string;
 
-  @ApiProperty({ enum: ['dog_walking', 'drop_in', 'daycare', 'overnight_boarding', 'house_sitting'] })
-  @IsEnum(['dog_walking', 'drop_in', 'daycare', 'overnight_boarding', 'house_sitting'])
-  serviceType: string;
+  // Service taxonomy — accepts the new uppercase values (BOARDING, WALKING,
+  // DAY_CARE, …) plus the legacy lowercase values that the Prisma migration
+  // kept for backfill (dog_walking, overnight_stay, …). Validating against
+  // ServiceType keeps the DTO and the DB enum in sync.
+  @ApiProperty({ enum: ServiceType, description: 'See Prisma ServiceType enum.' })
+  @IsEnum(ServiceType)
+  serviceType: ServiceType;
 
   @ApiProperty({ enum: ['hourly', 'daily', 'weekly', 'monthly'] })
   @IsEnum(['hourly', 'daily', 'weekly', 'monthly'])
