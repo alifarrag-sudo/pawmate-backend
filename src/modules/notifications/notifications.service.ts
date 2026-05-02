@@ -404,16 +404,30 @@ export class NotificationsService {
       this.prisma.notification.count({ where: { userId, isRead: false } }),
     ]);
 
+    // Shape matches what the mobile notifications screen reads:
+    // res.data?.notifications. `page` / `totalPages` stay on the envelope
+    // for paginated callers (admin web, future infinite scroll).
     return {
-      items: notifications,
-      meta: { page, limit, total, totalPages: Math.ceil(total / limit), unreadCount },
+      notifications,
+      total,
+      unreadCount,
+      page,
+      totalPages: Math.ceil(total / limit),
     };
   }
 
-  async markAllAsRead(userId: string): Promise<void> {
-    await this.prisma.notification.updateMany({
+  async getUnreadCount(userId: string): Promise<{ count: number }> {
+    const count = await this.prisma.notification.count({
+      where: { userId, isRead: false },
+    });
+    return { count };
+  }
+
+  async markAllAsRead(userId: string): Promise<{ markedRead: number }> {
+    const result = await this.prisma.notification.updateMany({
       where: { userId, isRead: false },
       data: { isRead: true, readAt: new Date() },
     });
+    return { markedRead: result.count };
   }
 }
