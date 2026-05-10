@@ -5,6 +5,7 @@ import {
   BadRequestException,
   NotFoundException,
   NotImplementedException,
+  HttpException,
   Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -27,6 +28,8 @@ const VERIFY_TOKEN_TTL = 3600;    // 1 hour
 const OTP_MAX_ATTEMPTS = 3;
 const OTP_RATE_LIMIT_SECONDS = 3600;
 const OTP_RATE_LIMIT_MAX = 5;
+const LOGIN_LOCKOUT_MAX = 5;
+const LOGIN_LOCKOUT_TTL = 900;    // 15 minutes
 
 const VALID_APP_ROLES = [
   'PARENT', 'PETFRIEND', 'TRAINER', 'KENNEL',
@@ -149,6 +152,24 @@ export class AuthService {
       });
     }
 
+    // Lockout key is keyed on the public identifier (email or phone) so
+    // attackers cannot enumerate user IDs to bypass the cap. Fails open if
+    // Redis is unavailable — same trade-off as the OTP rate limiter above.
+    const lockSubject = email ?? phone!;
+    const lockKey = `auth:lockout:${lockSubject}`;
+    const attemptsStr = await this.redis.get(lockKey);
+    if (parseInt(attemptsStr || '0', 10) >= LOGIN_LOCKOUT_MAX) {
+      throw new HttpException(
+        { message: 'Account temporarily locked. Try again in 15 minutes.', code: 'ACCOUNT_LOCKED' },
+        429,
+      );
+    }
+
+    const recordFailedAttempt = async () => {
+      await this.redis.incr(lockKey);
+      await this.redis.expire(lockKey, LOGIN_LOCKOUT_TTL);
+    };
+
     const user = await this.prisma.user.findFirst({
       where: {
         deletedAt: null,
@@ -158,6 +179,7 @@ export class AuthService {
     });
 
     if (!user) {
+      await recordFailedAttempt();
       throw new UnauthorizedException({
         error: 'INVALID_CREDENTIALS',
         message: 'Incorrect email/phone or password.',
@@ -181,11 +203,15 @@ export class AuthService {
     const passwordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!passwordValid) {
       await this.trackFailedLogin(user.id, ipAddress);
+      await recordFailedAttempt();
       throw new UnauthorizedException({
         error: 'INVALID_CREDENTIALS',
         message: 'Incorrect email or password.',
       });
     }
+
+    // Successful auth — clear the lockout counter for this identifier.
+    await this.redis.del(lockKey);
 
     await this.prisma.user.update({
       where: { id: user.id },

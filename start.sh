@@ -1,5 +1,6 @@
 #!/bin/sh
-echo "Running prisma db push..."
-npx prisma db push --accept-data-loss || echo "Schema push failed or already in sync, continuing..."
+set -e
+echo "Applying migrations..."
+npx prisma migrate deploy
 echo "Starting server..."
 exec node dist/main

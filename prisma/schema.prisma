@@ -716,7 +716,10 @@ model User {
   idFrontUrl     String?
   idBackUrl      String?
   idSelfieUrl    String?
-  idNumber       String? // Encrypted Egyptian National ID
+  // Egyptian National ID — AES-256-GCM ciphertext + IV stored separately.
+  // Always encrypt via MedicalEncryptionService before write; never store plaintext.
+  idNumberEnc    String?
+  idNumberIv     String?
   idReviewedAt   DateTime?
   idReviewedById String?
   idReviewer     User?     @relation("IdReviewer", fields: [idReviewedById], references: [id])

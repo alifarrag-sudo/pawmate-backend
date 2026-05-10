@@ -8,7 +8,29 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
+function validateBootEnv(): void {
+  const required: Record<string, { minLength: number; description: string }> = {
+    JWT_SECRET: { minLength: 32, description: 'JWT signing secret' },
+    MEDICAL_DATA_ENCRYPTION_KEY: { minLength: 64, description: 'AES-256 key (hex)' },
+    DATABASE_URL: { minLength: 10, description: 'PostgreSQL connection' },
+  };
+  for (const [key, { minLength, description }] of Object.entries(required)) {
+    const val = process.env[key];
+    if (!val || val.length < minLength) {
+      console.error(`FATAL: ${key} missing or too short. Required: ${description}`);
+      process.exit(1);
+    }
+  }
+  const jwtSecret = process.env.JWT_SECRET as string;
+  if (jwtSecret === 'secret' || jwtSecret === 'changeme' || jwtSecret === 'development') {
+    console.error('FATAL: JWT_SECRET is using a default/insecure value');
+    process.exit(1);
+  }
+}
+
 async function bootstrap() {
+  validateBootEnv();
+
   const app = await NestFactory.create(AppModule, {
     logger: ['error', 'warn', 'log', 'debug'],
   });

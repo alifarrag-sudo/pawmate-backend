@@ -18,7 +18,7 @@ RUN rm -f tsconfig.tsbuildinfo && npm run build && ls dist/main.js
 
 EXPOSE 3000
 
-# Sync schema + apply migrations, then start the app
-# db push syncs schema for DBs without migration history (Railway internal PG)
-# migrate deploy applies tracked migrations for DBs with history (Supabase)
-CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss 2>&1 || true && npx prisma migrate deploy 2>&1 || true && node dist/main"]
+# Apply tracked migrations, then start the app. No `prisma db push` —
+# schema changes only land via `prisma migrate deploy` against committed
+# migrations, so production state is always reproducible from source.
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
