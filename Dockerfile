@@ -1,5 +1,11 @@
 FROM node:20-bullseye-slim
 
+# psql is needed by start.sh's baseline fallback (Prisma P3005 recovery).
+# The slim base image strips it out, so install just the client (no server).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy everything
