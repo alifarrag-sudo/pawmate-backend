@@ -141,31 +141,21 @@ enum ServiceCategory {
 
 enum ServiceType {
   // SECTION A — SERVICES (PetFriend individual)
-  BOARDING // overnight stay (replaces overnight_stay)
-  WALKING // hourly leash walks (replaces dog_walking)
-  DAY_CARE // daytime supervision, 6hr/8hr (replaces pet_watching_*)
+  BOARDING
+  WALKING
+  DAY_CARE
 
   // SECTION B — PROFESSIONAL SERVICES
-  KENNEL // commercial boarding facility (replaces kennel_boarding)
-  PET_HOTEL // premium accommodation (replaces pethotel_boarding)
-  TRAINING // certified trainers (replaces trainer_session)
+  KENNEL
+  PET_HOTEL
+  TRAINING
 
   // SECTION C — PET CARE SERVICES
-  VET // veterinary
-  GROOMING // grooming salon/van
+  VET
+  GROOMING
 
   // SECTION D — MARKETPLACE
-  PET_SHOP // shop product order
-
-  // Legacy values kept for migration backfill — DO NOT use for new bookings.
-  // These will be removed in a follow-up migration once historical rows are reconciled.
-  dog_walking // legacy → WALKING
-  pet_watching_hourly // legacy → DAY_CARE
-  pet_watching_daily // legacy → DAY_CARE
-  overnight_stay // legacy → BOARDING
-  trainer_session // legacy → TRAINING
-  kennel_boarding // legacy → KENNEL
-  pethotel_boarding // legacy → PET_HOTEL
+  PET_SHOP
 }
 
 enum DayCareSessionType {

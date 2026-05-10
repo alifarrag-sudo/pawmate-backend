@@ -259,7 +259,6 @@ export class SittersService {
    */
   async updateServicePricing(userId: string, prices: {
     dog_walking?: number;
-    house_sitting?: number;
     daycare?: number;
     overnight_boarding?: number;
     drop_in?: number;
@@ -276,7 +275,6 @@ export class SittersService {
       where: { userId },
       data: {
         dogWalkingPrice:   prices.dog_walking        != null ? prices.dog_walking        : undefined,
-        houseSittingPrice: prices.house_sitting       != null ? prices.house_sitting       : undefined,
         daycarePrice:      prices.daycare             != null ? prices.daycare             : undefined,
         overnightPrice:    prices.overnight_boarding  != null ? prices.overnight_boarding  : undefined,
         dropInVisitPrice:  prices.drop_in             != null ? prices.drop_in             : undefined,

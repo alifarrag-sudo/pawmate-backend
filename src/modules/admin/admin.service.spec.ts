@@ -326,9 +326,9 @@ describe('AdminService', () => {
         }); // refunds
       prisma.booking.count.mockResolvedValue(200); // total bookings in period
       prisma.booking.groupBy.mockResolvedValue([
-        { serviceType: 'pet_watching_hourly', _sum: { totalPrice: 120000 } },
-        { serviceType: 'dog_walking', _sum: { totalPrice: 80000 } },
-        { serviceType: 'overnight_stay', _sum: { totalPrice: 50000 } },
+        { serviceType: 'DAY_CARE', _sum: { totalPrice: 120000 } },
+        { serviceType: 'WALKING', _sum: { totalPrice: 80000 } },
+        { serviceType: 'BOARDING', _sum: { totalPrice: 50000 } },
       ]);
       prisma.petFriendPayout.aggregate
         .mockResolvedValueOnce({ _sum: { amount: 5000 } })  // upcoming

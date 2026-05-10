@@ -69,7 +69,7 @@ describe('Reviews Module', () => {
         parentId: mockUserId,
         status: 'completed',
         petFriendId: 'provider-1',
-        serviceType: 'dog_walking',
+        serviceType: 'WALKING',
       });
       prisma.review.findUnique.mockResolvedValue(null); // no existing review
       prisma.review.create.mockResolvedValue({

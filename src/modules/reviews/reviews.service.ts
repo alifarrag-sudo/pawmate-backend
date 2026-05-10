@@ -30,14 +30,17 @@ interface ProviderIdentity {
   profileIdForReputation: string;
 }
 
+// Canonical ServiceType → ProviderType mapping. PET_SHOP is intentionally
+// absent: shop orders aren't reviewable through the booking-review flow.
 const SERVICE_TO_PROVIDER: Record<string, ProviderType> = {
-  dog_walking: ProviderType.PETFRIEND,
-  pet_watching_hourly: ProviderType.PETFRIEND,
-  pet_watching_daily: ProviderType.PETFRIEND,
-  overnight_stay: ProviderType.PETFRIEND,
-  trainer_session: ProviderType.TRAINER,
-  kennel_boarding: ProviderType.KENNEL,
-  pethotel_boarding: ProviderType.PETHOTEL,
+  WALKING: ProviderType.PETFRIEND,
+  DAY_CARE: ProviderType.PETFRIEND,
+  BOARDING: ProviderType.PETFRIEND,
+  TRAINING: ProviderType.TRAINER,
+  KENNEL: ProviderType.KENNEL,
+  PET_HOTEL: ProviderType.PETHOTEL,
+  VET: ProviderType.VET,
+  GROOMING: ProviderType.GROOMER,
 };
 
 const AUTO_APPROVE_THRESHOLD_DAYS = 30;
