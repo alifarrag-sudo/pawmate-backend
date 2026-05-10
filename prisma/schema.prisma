@@ -1929,6 +1929,7 @@ model Booking {
   petHotelStay        PetHotelStay? // Prompt 13: pet hotel stay
   vetConsultation     VetConsultation? // Prompt 15: vet consultation
   groomingAppointment GroomingAppointment? // Prompt 16: grooming appointment
+  meetGreetConsent    MeetGreetConsent? // G2: observe-only Meet & Greet consent
 
   @@index([parentId, status, createdAt(sort: Desc)])
   @@index([petFriendId, status, createdAt(sort: Desc)])
@@ -1953,6 +1954,57 @@ model BookingEndCode {
   createdAt DateTime  @default(now())
 
   @@map("booking_end_codes")
+}
+
+// G2: Meet & Greet consent — observe-only mode.
+//
+// Captures parent consent to a pre-service Meet & Greet for BOARDING and
+// DAY_CARE bookings. With MEET_GREET_BLOCKS_PAYMENT=false (current state)
+// this is purely informational: payment proceeds regardless of consent.
+// When the flag flips later, the absence of parentConsentGiven=true on a
+// BOARDING/DAY_CARE booking will gate the payment step.
+//
+// Consent text is versioned (`consentTextVersion`) and snapshotted on the
+// row (`consentTextEn` + `consentTextAr`) so a later wording change can't
+// retroactively re-interpret what a parent agreed to.
+enum MeetGreetStatus {
+  PENDING
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  WAIVED
+}
+
+model MeetGreetConsent {
+  id                 String          @id @default(cuid())
+  bookingId          String          @unique
+  booking            Booking         @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  parentId           String
+  providerId         String
+
+  status             MeetGreetStatus @default(PENDING)
+  scheduledAt        DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  waivedAt           DateTime?
+  waivedReason       String?
+
+  parentConsentGiven Boolean         @default(false)
+  parentConsentAt    DateTime?
+  consentTextVersion String?
+  consentTextEn      String?         @db.Text
+  consentTextAr      String?         @db.Text
+
+  providerNotes      String?         @db.Text
+
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  @@index([bookingId])
+  @@index([parentId])
+  @@index([providerId])
+  @@index([status])
+  @@map("meet_greet_consents")
 }
 
 model BookingPet {

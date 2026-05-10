@@ -44,6 +44,8 @@ import { CryptoModule } from './modules/crypto/crypto.module';
 import { VetModule } from './modules/vet/vet.module';
 // Groomer module (Prompt 16 — grooming salon/mobile van)
 import { GroomerModule } from './modules/groomer/groomer.module';
+// Meet & Greet (G2 — observe-only consent for BOARDING/DAY_CARE)
+import { MeetGreetModule } from './modules/meet-greet/meet-greet.module';
 // Web platform modules (PawMateHub web — Prompt 10.5)
 import { SupportModule } from './modules/support/support.module';
 import { InvestorModule } from './modules/investor/investor.module';
@@ -117,6 +119,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     CryptoModule,
     VetModule,
     GroomerModule,
+    MeetGreetModule,
     // Web platform modules
     SupportModule,
     InvestorModule,
