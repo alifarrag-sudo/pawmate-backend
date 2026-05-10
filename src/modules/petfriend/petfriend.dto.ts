@@ -187,3 +187,21 @@ export class SuspendDto {
 export class InstantCashoutDto {
   // No fields — eligibility and fee calculation are done server-side.
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Select services — POST /petfriend/services
+// PetFriend picks WHICH ServiceType(s) they will offer. The service layer
+// derives the required training course from the full set and writes one
+// ProviderServiceEligibility row per selected service.
+// ──────────────────────────────────────────────────────────────────────────────
+export class SelectServicesDto {
+  @ApiProperty({
+    description:
+      'Service types the provider wants to offer. Allowed values: WALKING, DAY_CARE, BOARDING.',
+    example: ['WALKING', 'DAY_CARE'],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsIn(['WALKING', 'DAY_CARE', 'BOARDING'], { each: true })
+  selectedServices: ('WALKING' | 'DAY_CARE' | 'BOARDING')[];
+}

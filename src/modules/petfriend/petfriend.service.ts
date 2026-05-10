@@ -10,8 +10,39 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { MailService } from '../mail/mail.service';
-import { UpdatePetFriendProfileDto } from './petfriend.dto';
-import { PetFriendStatus, ProviderPayoutMethod } from '@prisma/client';
+import { UpdatePetFriendProfileDto, SelectServicesDto } from './petfriend.dto';
+import {
+  PetFriendStatus,
+  ProviderPayoutMethod,
+  ServiceType,
+  ProviderServiceStatus,
+} from '@prisma/client';
+
+// Course identifiers — kept aligned with the mobile UI banner so the
+// pre-submit preview never drifts from the actual eligibility record.
+const BOARDING_PROVIDER_COURSE = 'BOARDING_PROVIDER_COURSE';
+const DAY_CARE_PROVIDER_COURSE = 'DAY_CARE_PROVIDER_COURSE';
+const WALKER_SAFETY_MODULE = 'WALKER_SAFETY_MODULE';
+
+type SelectableService = 'WALKING' | 'DAY_CARE' | 'BOARDING';
+
+/**
+ * Course assignment rule.
+ *   BOARDING in services      → BOARDING_PROVIDER_COURSE  (covers all 3)
+ *   DAY_CARE without BOARDING → DAY_CARE_PROVIDER_COURSE  (covers walking too)
+ *   WALKING only              → WALKER_SAFETY_MODULE
+ *
+ * Single-course-covers-all means a provider applying for BOARDING + WALKING
+ * has both eligibility rows reference the BOARDING course — they only have
+ * to complete one course, but per-service eligibility remains explicit so
+ * a single service can be suspended later without affecting the others.
+ */
+function getRequiredCourse(services: SelectableService[]): string | null {
+  if (services.includes('BOARDING')) return BOARDING_PROVIDER_COURSE;
+  if (services.includes('DAY_CARE')) return DAY_CARE_PROVIDER_COURSE;
+  if (services.includes('WALKING')) return WALKER_SAFETY_MODULE;
+  return null;
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -102,6 +133,76 @@ export class PetFriendService {
     });
 
     return { profileId: profile.id, status: profile.status };
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // Select services & assign required training course.
+  //
+  // Idempotent: re-calling this replaces the provider's eligibility set with
+  // the new selection. Services that drop out of the new selection are
+  // deleted; new ones are upserted. The required course recomputes against
+  // the full new selection, so adding BOARDING to an existing
+  // WALKING-only set will upgrade *all* eligibility rows to the boarding
+  // course in a single call.
+  // ──────────────────────────────────────────────────────────────────────────
+  async selectServices(userId: string, dto: SelectServicesDto) {
+    const services = dto.selectedServices as SelectableService[];
+    if (!services?.length) {
+      throw new BadRequestException(
+        'Pick at least one service (WALKING, DAY_CARE, or BOARDING).',
+      );
+    }
+
+    const requiredCourseId = getRequiredCourse(services);
+
+    // Wipe any previously-selected service that is no longer in the set so
+    // we don't leave stale eligibility rows the provider can't see in the
+    // UI. Active rows are preserved when their service is re-selected.
+    const existing = await this.prisma.providerServiceEligibility.findMany({
+      where: { userId },
+    });
+    const droppedIds = existing
+      .filter((row) => !services.includes(row.serviceType as SelectableService))
+      .map((row) => row.id);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (droppedIds.length) {
+        await tx.providerServiceEligibility.deleteMany({
+          where: { id: { in: droppedIds } },
+        });
+      }
+      for (const svc of services) {
+        await tx.providerServiceEligibility.upsert({
+          where: { userId_serviceType: { userId, serviceType: svc as ServiceType } },
+          create: {
+            userId,
+            serviceType: svc as ServiceType,
+            requiredCourseId,
+            trainingRequired: true,
+            status: ProviderServiceStatus.PENDING,
+          },
+          update: {
+            // Re-bind the required course to the latest selection's ceiling.
+            // Don't reset status if a row is already past PENDING — but DO
+            // re-bind the course id, since adding BOARDING bumps the
+            // requirement.
+            requiredCourseId,
+            trainingRequired: true,
+          },
+        });
+      }
+    });
+
+    this.eventEmitter.emit('petfriend.services_selected', {
+      userId,
+      services,
+      requiredCourseId,
+    });
+
+    return {
+      selectedServices: services,
+      requiredCourseId,
+    };
   }
 
   // ──────────────────────────────────────────────────────────────────────────

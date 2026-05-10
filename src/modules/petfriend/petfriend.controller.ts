@@ -29,6 +29,7 @@ import {
   ApplyPetFriendDto,
   UpdatePetFriendProfileDto,
   InstantCashoutDto,
+  SelectServicesDto,
 } from './petfriend.dto';
 import { documentFileFilter, uploadLimits } from '../uploads/uploads.service';
 
@@ -61,6 +62,24 @@ export class PetFriendController {
   })
   apply(@Request() req: any, @Body() _dto: ApplyPetFriendDto) {
     return this.petFriendService.applyForPetFriend(req.user.id);
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
+  // POST /petfriend/services
+  // ──────────────────────────────────────────────────────────────────────────
+  @Post('services')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Select which services this PetFriend will offer',
+    description:
+      'Idempotent. Writes one ProviderServiceEligibility row per selected service, ' +
+      'and assigns the required training course based on the highest-risk service ' +
+      'in the selection (BOARDING > DAY_CARE > WALKING). Re-calling replaces the ' +
+      'eligibility set; rows for services no longer selected are deleted.',
+  })
+  selectServices(@Request() req: any, @Body() dto: SelectServicesDto) {
+    return this.petFriendService.selectServices(req.user.id, dto);
   }
 
   // ──────────────────────────────────────────────────────────────────────────

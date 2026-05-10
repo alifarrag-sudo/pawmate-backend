@@ -807,6 +807,9 @@ model User {
   // Chat (Prompt: persist chat messages, history endpoint)
   chatMessagesSent ChatMessage[] @relation("ChatSender")
 
+  // Provider service eligibility — one row per (userId, serviceType)
+  providerServiceEligibility ProviderServiceEligibility[]
+
   // DEFERRED: Community feature
   adoptionPosts        AdoptionPost[]      @relation("AdoptionPoster")
   adoptionMessagesSent AdoptionMessage[]   @relation("AdoptionMsgSender")
@@ -3527,4 +3530,44 @@ model ChatMessage {
   @@index([bookingId, createdAt])
   @@index([bookingId, readAt])
   @@map("chat_messages")
+}
+
+// ============================================================
+// PROVIDER SERVICE ELIGIBILITY
+// ============================================================
+// Tracks which services a PetFriend has applied to offer and the training
+// course they must complete before each is activated. One row per
+// (userId, serviceType). The `requiredCourseId` is computed from the
+// full set of services the provider selected — see `getRequiredCourse`
+// in petfriend.service.ts. Status starts at PENDING and flips to
+// ACTIVE once the course is completed and admin approves.
+
+enum ProviderServiceStatus {
+  PENDING
+  COURSE_IN_PROGRESS
+  COURSE_COMPLETED
+  ACTIVE
+  SUSPENDED
+}
+
+model ProviderServiceEligibility {
+  id                String                @id @default(uuid())
+  userId            String
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceType       ServiceType
+  requiredCourseId  String? // course identifier; null if no course yet assigned
+  trainingRequired  Boolean               @default(true)
+  status            ProviderServiceStatus @default(PENDING)
+  courseStartedAt   DateTime?
+  courseCompletedAt DateTime?
+  activatedAt       DateTime?
+  suspendedAt       DateTime?
+  suspensionReason  String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  @@unique([userId, serviceType])
+  @@index([userId])
+  @@index([status])
+  @@map("provider_service_eligibility")
 }
