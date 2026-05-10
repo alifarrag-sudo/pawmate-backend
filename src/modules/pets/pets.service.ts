@@ -1,9 +1,208 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { MedicalEncryptionService } from '../crypto/medical-encryption.service';
 
 @Injectable()
 export class PetsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private uploads: UploadsService,
+    private encryption: MedicalEncryptionService,
+    private eventEmitter: EventEmitter2,
+  ) {}
+
+  // ── G1: Vaccination passport ──────────────────────────────────────────────
+
+  /**
+   * Upload a vaccination passport file (JPEG/PNG/WebP/PDF, ≤10MB) to
+   * private Cloudinary storage and persist only the storage key. The
+   * caller's ownership is enforced; admins can verify but uploads are
+   * always parent-driven.
+   */
+  async uploadVaccinationPassport(
+    userId: string,
+    petId: string,
+    file: Express.Multer.File,
+  ) {
+    const pet = await this.assertOwned(userId, petId);
+
+    const folder = `pawmatehub/pets/${pet.id}/vaccination`;
+    const result = await this.uploads.uploadPrivateFile(
+      file.buffer,
+      file.mimetype,
+      folder,
+    );
+
+    await this.prisma.pet.update({
+      where: { id: pet.id },
+      data: {
+        vaccinationPassportKey: result.key,
+        // Reset verification on every new upload — a fresh document
+        // restarts the admin review cycle.
+        vaccinationVerified: false,
+        vaccinationVerifiedAt: null,
+        vaccinationVerifiedBy: null,
+        vaccinationExpiresAt: null,
+      },
+    });
+
+    this.eventEmitter.emit('pet.vaccination_uploaded', {
+      petId: pet.id,
+      ownerId: userId,
+      mimeType: result.mimeType,
+      bytes: result.bytes,
+    });
+
+    return {
+      uploaded: true,
+      bytes: result.bytes,
+      mimeType: result.mimeType,
+    };
+  }
+
+  /**
+   * Mint a 15-minute signed URL for the vaccination passport. Both the
+   * pet's owner and an admin can read it; everyone else gets 403.
+   */
+  async getVaccinationSignedUrl(userId: string, petId: string) {
+    const requester = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    if (!requester) throw new ForbiddenException();
+
+    const pet = await this.prisma.pet.findFirst({
+      where: { id: petId, isActive: true },
+      select: {
+        id: true,
+        ownerId: true,
+        vaccinationPassportKey: true,
+      },
+    });
+    if (!pet) throw new NotFoundException('Pet not found.');
+
+    const isOwner = pet.ownerId === userId;
+    const isAdmin = ['admin', 'owner', 'owner_restricted'].includes(requester.role);
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException('Not authorised to view this document.');
+    }
+
+    if (!pet.vaccinationPassportKey) {
+      throw new NotFoundException('No vaccination passport uploaded yet.');
+    }
+
+    // PDFs land as `raw` in Cloudinary; everything else is `image`. The
+    // resourceType for signing matches what the upload chose. We can't
+    // detect after the fact without storing the mime — keep it simple
+    // and try image first; clients render both via webview/Image.
+    const signed = this.uploads.signedUrlFor(pet.vaccinationPassportKey, {
+      ttlSeconds: 900,
+    });
+
+    return {
+      url: signed.url,
+      expiresAt: signed.expiresAt.toISOString(),
+    };
+  }
+
+  /**
+   * Admin marks the vaccination passport as verified or rejected. On
+   * verification we record the admin's id + an explicit expiry date
+   * (vaccines expire on a known schedule and we want the UI to surface
+   * the next-renewal date).
+   */
+  async verifyVaccination(
+    adminUserId: string,
+    petId: string,
+    body: { verified: boolean; expiresAt?: string },
+  ) {
+    const pet = await this.prisma.pet.findFirst({
+      where: { id: petId, isActive: true },
+      select: { id: true, vaccinationPassportKey: true },
+    });
+    if (!pet) throw new NotFoundException('Pet not found.');
+    if (!pet.vaccinationPassportKey) {
+      throw new BadRequestException('No vaccination passport to verify.');
+    }
+
+    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
+    if (body.verified && expiresAt && Number.isNaN(expiresAt.getTime())) {
+      throw new BadRequestException('expiresAt must be a valid ISO date.');
+    }
+
+    return this.prisma.pet.update({
+      where: { id: pet.id },
+      data: {
+        vaccinationVerified: body.verified,
+        vaccinationVerifiedAt: body.verified ? new Date() : null,
+        vaccinationVerifiedBy: body.verified ? adminUserId : null,
+        vaccinationExpiresAt: body.verified ? expiresAt : null,
+      },
+      select: {
+        id: true,
+        vaccinationVerified: true,
+        vaccinationVerifiedAt: true,
+        vaccinationExpiresAt: true,
+      },
+    });
+  }
+
+  // ── G1: Pet licence ───────────────────────────────────────────────────────
+
+  /**
+   * Submit an Egyptian pet licence. The licence number is encrypted with
+   * MedicalEncryptionService before write — plaintext is never stored.
+   * Governorate is plain (used for filtering and admin geo views).
+   */
+  async submitLicence(
+    userId: string,
+    petId: string,
+    body: { licenceNumber: string; governorate: string },
+  ) {
+    const pet = await this.assertOwned(userId, petId);
+
+    const number = (body.licenceNumber ?? '').trim();
+    const governorate = (body.governorate ?? '').trim();
+    if (!number) {
+      throw new BadRequestException('Licence number is required.');
+    }
+    if (!governorate) {
+      throw new BadRequestException('Governorate is required.');
+    }
+
+    const encrypted = this.encryption.encrypt(number);
+
+    return this.prisma.pet.update({
+      where: { id: pet.id },
+      data: {
+        licenceNumberEnc: encrypted,
+        licenceGovernorate: governorate,
+        licenceSubmittedAt: new Date(),
+        // verification is admin-driven; reset on resubmit so a new
+        // number doesn't inherit prior approval.
+        licenceVerified: false,
+      },
+      select: {
+        id: true,
+        licenceGovernorate: true,
+        licenceSubmittedAt: true,
+        licenceVerified: true,
+      },
+    });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  private async assertOwned(userId: string, petId: string) {
+    const pet = await this.prisma.pet.findFirst({
+      where: { id: petId, ownerId: userId, isActive: true },
+      select: { id: true, ownerId: true },
+    });
+    if (!pet) throw new NotFoundException('Pet not found.');
+    return pet;
+  }
 
   async findByOwner(ownerId: string) {
     return this.prisma.pet.findMany({

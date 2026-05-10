@@ -4,7 +4,16 @@ import { v2 as cloudinary } from 'cloudinary';
 import sharp from 'sharp';
 import { Request } from 'express';
 
-export type UploadFolder = 'profile_photos' | 'pet_photos' | 'social_posts' | 'id_documents' | 'trainer_videos' | 'facility_photos' | 'business_docs';
+export type UploadFolder = 'profile_photos' | 'pet_photos' | 'social_posts' | 'id_documents' | 'trainer_videos' | 'facility_photos' | 'business_docs' | 'pet_vaccination';
+
+export interface PrivateUploadResult {
+  /** Cloudinary public_id — the storage key. NEVER expose this in URLs to
+   *  end users; mint a signed URL via signedUrlFor() instead. */
+  key: string;
+  mimeType: string;
+  bytes: number;
+  resourceType: 'image' | 'raw';
+}
 
 export interface UploadResult {
   url: string;
@@ -195,6 +204,90 @@ export class UploadsService {
       );
       stream.end(buffer);
     });
+  }
+
+  /**
+   * Upload a sensitive file (vaccination passport, pet licence) to private
+   * Cloudinary storage. The returned key is what gets persisted to the DB —
+   * we never store a public URL. Reads happen through `signedUrlFor`.
+   */
+  async uploadPrivateFile(
+    buffer: Buffer,
+    mimeType: string,
+    folder: string,
+  ): Promise<PrivateUploadResult> {
+    if (buffer.length > MAX_FILE_SIZE) {
+      throw new BadRequestException('File too large. Maximum size is 10 MB.');
+    }
+
+    const isPdf = mimeType === 'application/pdf';
+    const resourceType: 'image' | 'raw' = isPdf ? 'raw' : 'image';
+
+    if (!this.ready) {
+      // Dev fallback — return a deterministic placeholder key so callers
+      // can still persist + fetch a signed URL (which will resolve to a
+      // placeholder image too).
+      const key = `dev_private_${folder}_${Date.now()}`;
+      return { key, mimeType, bytes: buffer.length, resourceType };
+    }
+
+    return new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          folder,
+          resource_type: resourceType,
+          // `type: 'private'` makes the asset reachable only via signed
+          // URLs. Without this flag the secure_url would be world-readable
+          // by anyone who guesses the path.
+          type: 'private',
+          access_mode: 'authenticated',
+        },
+        (error, result) => {
+          if (error || !result) {
+            this.logger.error(`Cloudinary private upload failed: ${error?.message}`);
+            return reject(new BadRequestException('File upload failed. Please try again.'));
+          }
+          resolve({
+            key: result.public_id,
+            mimeType,
+            bytes: result.bytes ?? buffer.length,
+            resourceType,
+          });
+        },
+      );
+      stream.end(buffer);
+    });
+  }
+
+  /**
+   * Mint a short-lived signed URL for a private storage key. TTL is
+   * clamped to 900 seconds (15 minutes) per CONVENTIONS.md — anything
+   * longer would defeat the point of private storage.
+   */
+  signedUrlFor(
+    key: string,
+    options: { ttlSeconds?: number; resourceType?: 'image' | 'raw' } = {},
+  ): { url: string; expiresAt: Date } {
+    const ttl = Math.min(Math.max(options.ttlSeconds ?? 900, 60), 900);
+    const expiresAt = new Date(Date.now() + ttl * 1000);
+
+    if (!this.ready || key.startsWith('dev_private_')) {
+      // Dev placeholder — caller can still render a UI; production
+      // requires Cloudinary creds set.
+      return {
+        url: `https://placehold.co/800x600/FF6B35/FFFFFF?text=Private+Doc`,
+        expiresAt,
+      };
+    }
+
+    const expiresAtUnix = Math.floor(expiresAt.getTime() / 1000);
+    const url = cloudinary.utils.private_download_url(key, '', {
+      resource_type: options.resourceType ?? 'image',
+      type: 'private',
+      expires_at: expiresAtUnix,
+    });
+
+    return { url, expiresAt };
   }
 
   async deleteImage(publicId: string): Promise<void> {

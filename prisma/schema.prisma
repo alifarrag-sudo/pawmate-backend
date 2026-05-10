@@ -1626,9 +1626,27 @@ model Pet {
   profilePhoto String?
   photos       String[]
 
-  // Vaccination certificate
-  vaccinationCertPhoto String? // uploaded document/photo URL
+  // Vaccination certificate (legacy — kept for back-compat with existing rows;
+  // new code writes vaccinationPassportKey instead).
+  vaccinationCertPhoto String? // legacy uploaded document/photo URL
   vaccinationVerified  Boolean @default(false) // set by admin after review
+
+  // G1: Vaccination passport (private Cloudinary storage). We store the
+  // storage key only — public URLs are minted on-demand by the
+  // UploadsService.signedUrlFor() helper with a 15-minute TTL ceiling.
+  vaccinationPassportKey String?
+  vaccinationVerifiedAt  DateTime?
+  vaccinationVerifiedBy  String? // admin User.id who approved the doc
+  vaccinationExpiresAt   DateTime?
+
+  // G1: Egyptian pet licence — optional. The licence number is AES-256-GCM
+  // encrypted via MedicalEncryptionService before write; the plaintext is
+  // never stored on disk. Governorate is plain text (it's a public field
+  // and used for filtering). licenceVerified flips after admin review.
+  licenceNumberEnc   String?
+  licenceGovernorate String?
+  licenceVerified    Boolean   @default(false)
+  licenceSubmittedAt DateTime?
 
   // Special needs
   medicalConditions String? // free text

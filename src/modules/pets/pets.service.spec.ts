@@ -1,7 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PetsService } from './pets.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { UploadsService } from '../uploads/uploads.service';
+import { MedicalEncryptionService } from '../crypto/medical-encryption.service';
 
 /**
  * Unit tests for the medical-subresource methods on PetsService.
@@ -71,10 +74,18 @@ describe('PetsService — medical subresources', () => {
       },
     };
 
+    // PetsService gained UploadsService + MedicalEncryptionService +
+    // EventEmitter2 deps in G1. The medical-subresource tests don't
+    // exercise any of them, so jest.fn() stubs are sufficient — but
+    // Nest still needs class-token providers wired up before compile()
+    // or DI fails before any test runs.
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PetsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: UploadsService, useValue: { uploadPrivateFile: jest.fn(), signedUrlFor: jest.fn() } },
+        { provide: MedicalEncryptionService, useValue: { encrypt: jest.fn(), decrypt: jest.fn() } },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
