@@ -88,7 +88,7 @@ export const SERVICE_ELIGIBILITY_POLICY: Record<string, ServicePolicy> = {
   TRAINING: {
     category: ProviderCategory.PROFESSIONAL_SERVICES,
     riskTier: VerificationRiskTier.MEDIUM,
-    mobileBookable: false,
+    mobileBookable: true,
     providerMobileSignup: false,
     trainingRequired: false,
     requiredCourseId: null,
@@ -96,7 +96,7 @@ export const SERVICE_ELIGIBILITY_POLICY: Record<string, ServicePolicy> = {
   PET_HOTEL: {
     category: ProviderCategory.PROFESSIONAL_SERVICES,
     riskTier: VerificationRiskTier.HIGH,
-    mobileBookable: false,
+    mobileBookable: true,
     providerMobileSignup: false,
     trainingRequired: false,
     requiredCourseId: null,
@@ -104,7 +104,7 @@ export const SERVICE_ELIGIBILITY_POLICY: Record<string, ServicePolicy> = {
   KENNEL: {
     category: ProviderCategory.PROFESSIONAL_SERVICES,
     riskTier: VerificationRiskTier.HIGH,
-    mobileBookable: false,
+    mobileBookable: true,
     providerMobileSignup: false,
     trainingRequired: false,
     requiredCourseId: null,
@@ -112,7 +112,7 @@ export const SERVICE_ELIGIBILITY_POLICY: Record<string, ServicePolicy> = {
   VET: {
     category: ProviderCategory.PETCARE,
     riskTier: VerificationRiskTier.HIGH,
-    mobileBookable: false,
+    mobileBookable: true,
     providerMobileSignup: false,
     trainingRequired: false,
     requiredCourseId: null,
@@ -120,7 +120,7 @@ export const SERVICE_ELIGIBILITY_POLICY: Record<string, ServicePolicy> = {
   GROOMING: {
     category: ProviderCategory.PETCARE,
     riskTier: VerificationRiskTier.MEDIUM,
-    mobileBookable: false,
+    mobileBookable: true,
     providerMobileSignup: false,
     trainingRequired: false,
     requiredCourseId: null,
