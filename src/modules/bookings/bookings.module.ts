@@ -8,6 +8,7 @@ import { RedisModule } from '../../common/redis.module';
 import { CareLogModule } from '../care-log/care-log.module';
 import { PricingModule } from '../pricing/pricing.module';
 import { ProvidersModule } from '../providers/providers.module';
+import { LmsModule } from '../lms/lms.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ProvidersModule } from '../providers/providers.module';
     CareLogModule,
     PricingModule,
     ProvidersModule, // exports OperatorService for /bookings/operator
+    LmsModule,       // exports LmsService for the training-required gate
   ],
   controllers: [BookingsController],
   providers: [BookingsService, MatchingService, PricingService],

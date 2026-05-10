@@ -15,6 +15,8 @@ import { PricingService } from './pricing.service';
 import { PricingService as TaxonomyPricingService, BookingPriceBreakdown } from '../pricing/pricing.service';
 import { CreateBookingDto } from './dto/create-booking.dto';
 import { CareLogService } from '../care-log/care-log.service';
+import { LmsService } from '../lms/lms.service';
+import { CourseId, ServiceType } from '@prisma/client';
 
 @Injectable()
 export class BookingsService {
@@ -28,7 +30,60 @@ export class BookingsService {
     private taxonomyPricing: TaxonomyPricingService,
     private eventEmitter: EventEmitter2,
     private careLogService: CareLogService,
+    private lms: LmsService,
   ) {}
+
+  /**
+   * Earning gate. A PetFriend cannot accept bookings for a service
+   * whose ProviderServiceEligibility row says training is required and
+   * not yet passed. The 403 includes the courseId + a fresh signed
+   * web-link so the mobile app can deep-link straight into the LMS.
+   *
+   * Returns silently if the eligibility row is missing — that's a
+   * separate problem (provider hasn't run /petfriend/services yet) and
+   * the older "not your booking" / status checks already cover the
+   * authorisation surface.
+   */
+  private async assertTrainingForServiceType(
+    petFriendId: string,
+    serviceType: string,
+  ): Promise<void> {
+    const eligibility = await this.prisma.providerServiceEligibility.findUnique({
+      where: {
+        providerId_serviceType: {
+          providerId: petFriendId,
+          serviceType: serviceType as ServiceType,
+        },
+      },
+      select: { trainingRequired: true, trainingPassed: true, requiredCourseId: true },
+    });
+    if (!eligibility) return;
+    if (!eligibility.trainingRequired || eligibility.trainingPassed) return;
+
+    const courseId = (eligibility.requiredCourseId ?? null) as CourseId | null;
+    let webUrl: string | null = null;
+    let returnUrl: string | null = null;
+    if (courseId) {
+      try {
+        const link = this.lms.buildWebLink(petFriendId, courseId);
+        webUrl = link.webUrl;
+        returnUrl = link.returnUrl;
+      } catch {
+        // Web-link minting failed (most likely missing JWT_SECRET in
+        // dev). Surface the rejection anyway — the client can retry
+        // after fetching the link from /lms/courses/:id/web-link.
+      }
+    }
+
+    throw new ForbiddenException({
+      code: 'TRAINING_REQUIRED',
+      messageEn: 'Complete your training to accept bookings.',
+      messageAr: 'أكمل تدريبك لقبول الحجوزات.',
+      courseId,
+      webUrl,
+      returnUrl,
+    });
+  }
 
   /**
    * Run the new BOARDING/WALKING/DAY_CARE pricing engine when the booking
@@ -371,6 +426,11 @@ export class BookingsService {
         message: 'You have a conflicting booking. Request declined automatically.',
       });
     }
+
+    // G1 LMS earning gate. Throws 403 with a deep-link to the required
+    // course if the PetFriend hasn't passed training for this service
+    // type yet. Skipped silently if no eligibility row exists.
+    await this.assertTrainingForServiceType(petFriendId, booking.serviceType);
 
     const updated = await this.prisma.booking.update({
       where: { id: bookingId },

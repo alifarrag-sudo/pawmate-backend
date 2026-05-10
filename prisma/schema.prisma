@@ -812,6 +812,10 @@ model User {
   // explicit relation name "ProviderEligibilities".
   providerEligibilities ProviderServiceEligibility[] @relation("ProviderEligibilities")
 
+  // G1 LMS — courses the provider has enrolled in. One row per
+  // (providerId, courseId).
+  courseEnrollments CourseEnrollment[] @relation("CourseEnrollments")
+
   // DEFERRED: Community feature
   adoptionPosts        AdoptionPost[]      @relation("AdoptionPoster")
   adoptionMessagesSent AdoptionMessage[]   @relation("AdoptionMsgSender")
@@ -3657,4 +3661,127 @@ model ProviderServiceEligibilityAuditLog {
 
   @@index([eligibilityId])
   @@index([createdAt])
+}
+
+// ============================================================
+// LMS — In-house Provider Training
+// ============================================================
+// PawMateHub runs its own LMS rather than embedding an external one. The
+// flow is mobile → web (pawmatehub.com/learn/...) → mobile via deep link
+// (signed-JWT round-trip). Each Course has ordered lessons (video / text
+// / quiz), a passing score, and a cooldown between attempts. On pass we
+// generate a PDF certificate (private Cloudinary upload) and flip
+// ProviderServiceEligibility.trainingPassed for every service that maps
+// to that course id.
+//
+// CourseId is enum-as-PK because the set is closed (only three courses
+// today, all listed in eligibility-policy.ts) and we need it as the FK
+// from CourseEnrollment + ProviderServiceEligibility.requiredCourseId.
+
+enum CourseId {
+  WALKER_SAFETY_MODULE
+  DAY_CARE_PROVIDER_COURSE
+  BOARDING_PROVIDER_COURSE
+}
+
+enum LessonType {
+  VIDEO
+  TEXT
+  QUIZ
+}
+
+enum CourseStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PASSED
+  FAILED
+}
+
+model Course {
+  id               CourseId @id
+  titleEn          String
+  titleAr          String
+  descriptionEn    String   @db.Text
+  descriptionAr    String   @db.Text
+  totalLessons     Int
+  estimatedMinutes Int
+  passScore        Int      @default(80)
+  maxAttempts      Int      @default(3)
+  cooldownHours    Int      @default(24)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+
+  lessons     CourseLesson[]
+  enrollments CourseEnrollment[]
+}
+
+model CourseLesson {
+  id              String     @id @default(cuid())
+  courseId        CourseId
+  course          Course     @relation(fields: [courseId], references: [id])
+  order           Int
+  titleEn         String
+  titleAr         String
+  type            LessonType
+  youtubeUrl      String?
+  durationMinutes Int?
+  contentEn       String?    @db.Text
+  contentAr       String?    @db.Text
+
+  questions QuizQuestion[]
+
+  @@unique([courseId, order])
+  @@index([courseId])
+}
+
+model QuizQuestion {
+  id            String       @id @default(cuid())
+  lessonId      String
+  lesson        CourseLesson @relation(fields: [lessonId], references: [id])
+  order         Int
+  questionEn    String       @db.Text
+  questionAr    String       @db.Text
+  // options is stored as JSON: [{ id: 'a', textEn: '...', textAr: '...' }, ...]
+  options       Json
+  correctId     String
+  explanationEn String?      @db.Text
+  explanationAr String?      @db.Text
+
+  @@index([lessonId])
+}
+
+model CourseEnrollment {
+  id                  String       @id @default(cuid())
+  providerId          String
+  provider            User         @relation("CourseEnrollments", fields: [providerId], references: [id])
+  courseId            CourseId
+  course              Course       @relation(fields: [courseId], references: [id])
+  status              CourseStatus @default(NOT_STARTED)
+  startedAt           DateTime?
+  completedAt         DateTime?
+  currentLesson       Int          @default(1)
+  score               Int?
+  attempts            Int          @default(0)
+  lastAttemptAt       DateTime?
+  certificateKey      String?
+  certificateIssuedAt DateTime?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
+
+  progress LessonProgress[]
+
+  @@unique([providerId, courseId])
+  @@index([providerId])
+  @@index([status])
+}
+
+model LessonProgress {
+  id           String           @id @default(cuid())
+  enrollmentId String
+  enrollment   CourseEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonOrder  Int
+  completedAt  DateTime?
+  quizScore    Int?
+
+  @@unique([enrollmentId, lessonOrder])
 }

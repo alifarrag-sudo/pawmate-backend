@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { SittersModule } from './modules/sitters/sitters.module';
 import { PetsModule } from './modules/pets/pets.module';
+import { LmsModule } from './modules/lms/lms.module';
 import { SearchModule } from './modules/search/search.module';
 import { BookingsModule } from './modules/bookings/bookings.module';
 import { TrackingModule } from './modules/tracking/tracking.module';
@@ -84,6 +85,7 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     UsersModule,
     SittersModule,
     PetsModule,
+    LmsModule,
     SearchModule,
     BookingsModule,
     TrackingModule,
