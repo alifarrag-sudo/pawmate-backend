@@ -807,8 +807,10 @@ model User {
   // Chat (Prompt: persist chat messages, history endpoint)
   chatMessagesSent ChatMessage[] @relation("ChatSender")
 
-  // Provider service eligibility — one row per (userId, serviceType)
-  providerServiceEligibility ProviderServiceEligibility[]
+  // Provider service eligibility — one row per (providerId, serviceType).
+  // Renamed from providerServiceEligibility in G1 to match the new schema's
+  // explicit relation name "ProviderEligibilities".
+  providerEligibilities ProviderServiceEligibility[] @relation("ProviderEligibilities")
 
   // DEFERRED: Community feature
   adoptionPosts        AdoptionPost[]      @relation("AdoptionPoster")
@@ -3533,41 +3535,108 @@ model ChatMessage {
 }
 
 // ============================================================
-// PROVIDER SERVICE ELIGIBILITY
+// PROVIDER SERVICE ELIGIBILITY (G1)
 // ============================================================
-// Tracks which services a PetFriend has applied to offer and the training
-// course they must complete before each is activated. One row per
-// (userId, serviceType). The `requiredCourseId` is computed from the
-// full set of services the provider selected — see `getRequiredCourse`
-// in petfriend.service.ts. Status starts at PENDING and flips to
-// ACTIVE once the course is completed and admin approves.
+// One row per (providerId, serviceType). Tracks the entire verification
+// lifecycle: which documents have been approved, whether a training
+// course is required and whether it's been passed, and the admin review
+// timestamps. Replaces the prior PENDING/IN_PROGRESS/ACTIVE pipeline
+// with the spec's PENDING / IN_REVIEW / APPROVED / REJECTED /
+// SUSPENDED / EXPIRED states so we can model rejected applications and
+// expired certifications without overloading SUSPENDED.
 
-enum ProviderServiceStatus {
+enum ProviderCategory {
+  SERVICES // PetFriend individuals: WALKING / DAY_CARE / BOARDING
+  PROFESSIONAL_SERVICES // commercial: TRAINING / PET_HOTEL / KENNEL
+  PETCARE // VET / GROOMING
+  MARKETPLACE // PET_SHOP
+}
+
+enum VerificationRiskTier {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProviderEligibilityStatus {
   PENDING
-  COURSE_IN_PROGRESS
-  COURSE_COMPLETED
-  ACTIVE
+  IN_REVIEW
+  APPROVED
+  REJECTED
   SUSPENDED
+  EXPIRED
+}
+
+enum ProviderEligibilityAuditAction {
+  CREATED
+  SUBMITTED
+  APPROVED
+  REJECTED
+  SUSPENDED
+  EXPIRED
+  REVERIFICATION_REQUESTED
+  TRAINING_COMPLETED
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
 }
 
 model ProviderServiceEligibility {
-  id                String                @id @default(uuid())
-  userId            String
-  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  serviceType       ServiceType
-  requiredCourseId  String? // course identifier; null if no course yet assigned
-  trainingRequired  Boolean               @default(true)
-  status            ProviderServiceStatus @default(PENDING)
-  courseStartedAt   DateTime?
-  courseCompletedAt DateTime?
-  activatedAt       DateTime?
-  suspendedAt       DateTime?
-  suspensionReason  String?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  id           String   @id @default(cuid())
+  providerId   String
+  category     ProviderCategory
+  serviceType  ServiceType
+  riskTier     VerificationRiskTier
+  status       ProviderEligibilityStatus @default(PENDING)
+  statusReason String?
 
-  @@unique([userId, serviceType])
-  @@index([userId])
+  // Per-document approval. The doc itself lives on User; this row tracks
+  // *whether the admin has approved that doc for this specific service*.
+  // A single rejected doc keeps the row out of APPROVED.
+  profilePhotoApproved  Boolean @default(false)
+  idFrontApproved       Boolean @default(false)
+  idBackApproved        Boolean @default(false)
+  selfieWithIdApproved  Boolean @default(false)
+  pccApproved           Boolean @default(false)
+
+  // Training. requiredCourseId is computed from the highest-risk service
+  // in the provider's selection (see eligibility-policy.ts).
+  trainingRequired      Boolean   @default(false)
+  requiredCourseId      String?
+  trainingPassed        Boolean   @default(false)
+  trainingScore         Int?
+  trainingCompletedAt   DateTime?
+  certificateKey        String?
+
+  // Lifecycle timestamps
+  submittedAt      DateTime?
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  approvedAt       DateTime?
+  expiresAt        DateTime?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  provider  User                                 @relation("ProviderEligibilities", fields: [providerId], references: [id], onDelete: Cascade)
+  auditLogs ProviderServiceEligibilityAuditLog[]
+
+  @@unique([providerId, serviceType])
+  @@index([providerId])
   @@index([status])
-  @@map("provider_service_eligibility")
+  @@index([riskTier])
+  @@index([expiresAt])
+}
+
+model ProviderServiceEligibilityAuditLog {
+  id            String                         @id @default(cuid())
+  eligibilityId String
+  actorUserId   String?
+  action        ProviderEligibilityAuditAction
+  metadata      Json?
+  createdAt     DateTime                       @default(now())
+
+  eligibility ProviderServiceEligibility @relation(fields: [eligibilityId], references: [id], onDelete: Cascade)
+
+  @@index([eligibilityId])
+  @@index([createdAt])
 }

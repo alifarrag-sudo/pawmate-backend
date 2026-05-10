@@ -15,34 +15,16 @@ import {
   PetFriendStatus,
   ProviderPayoutMethod,
   ServiceType,
-  ProviderServiceStatus,
+  ProviderEligibilityStatus,
+  ProviderEligibilityAuditAction,
 } from '@prisma/client';
-
-// Course identifiers — kept aligned with the mobile UI banner so the
-// pre-submit preview never drifts from the actual eligibility record.
-const BOARDING_PROVIDER_COURSE = 'BOARDING_PROVIDER_COURSE';
-const DAY_CARE_PROVIDER_COURSE = 'DAY_CARE_PROVIDER_COURSE';
-const WALKER_SAFETY_MODULE = 'WALKER_SAFETY_MODULE';
-
-type SelectableService = 'WALKING' | 'DAY_CARE' | 'BOARDING';
-
-/**
- * Course assignment rule.
- *   BOARDING in services      → BOARDING_PROVIDER_COURSE  (covers all 3)
- *   DAY_CARE without BOARDING → DAY_CARE_PROVIDER_COURSE  (covers walking too)
- *   WALKING only              → WALKER_SAFETY_MODULE
- *
- * Single-course-covers-all means a provider applying for BOARDING + WALKING
- * has both eligibility rows reference the BOARDING course — they only have
- * to complete one course, but per-service eligibility remains explicit so
- * a single service can be suspended later without affecting the others.
- */
-function getRequiredCourse(services: SelectableService[]): string | null {
-  if (services.includes('BOARDING')) return BOARDING_PROVIDER_COURSE;
-  if (services.includes('DAY_CARE')) return DAY_CARE_PROVIDER_COURSE;
-  if (services.includes('WALKING')) return WALKER_SAFETY_MODULE;
-  return null;
-}
+import {
+  getRequiredCourse,
+  policyFor,
+  isServicesCategoryType,
+  SERVICES_CATEGORY_TYPES,
+  type ServicesCategoryType,
+} from '../provider-verification/eligibility-policy';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -136,71 +118,118 @@ export class PetFriendService {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
-  // Select services & assign required training course.
+  // Select services & assign required training course (G1).
   //
-  // Idempotent: re-calling this replaces the provider's eligibility set with
-  // the new selection. Services that drop out of the new selection are
-  // deleted; new ones are upserted. The required course recomputes against
-  // the full new selection, so adding BOARDING to an existing
-  // WALKING-only set will upgrade *all* eligibility rows to the boarding
-  // course in a single call.
+  // Only SERVICES-category types (WALKING / DAY_CARE / BOARDING) are
+  // accepted via this endpoint. Each row is hydrated from
+  // SERVICE_ELIGIBILITY_POLICY so category / riskTier / trainingRequired
+  // / requiredCourseId can never drift between code and policy.
+  //
+  // Idempotent: re-calling replaces the provider's eligibility set —
+  // services dropped out of the new selection are deleted; selected
+  // services are upserted. The required course recomputes against the
+  // full new selection so adding BOARDING to a WALKING-only set lifts
+  // every row to the boarding course in one call. CREATE / DROPPED rows
+  // are written to the audit log.
   // ──────────────────────────────────────────────────────────────────────────
   async selectServices(userId: string, dto: SelectServicesDto) {
-    const services = dto.selectedServices as SelectableService[];
-    if (!services?.length) {
+    const services = (dto.selectedServices ?? []) as string[];
+    if (!services.length) {
       throw new BadRequestException(
-        'Pick at least one service (WALKING, DAY_CARE, or BOARDING).',
+        `Pick at least one service (${SERVICES_CATEGORY_TYPES.join(' / ')}).`,
       );
     }
 
-    const requiredCourseId = getRequiredCourse(services);
+    // Whitelist enforcement: anything outside SERVICES_CATEGORY_TYPES
+    // requires the admin-side professional-services workflow.
+    const invalid = services.filter((s) => !isServicesCategoryType(s));
+    if (invalid.length) {
+      throw new BadRequestException({
+        error: 'INVALID_SERVICE_TYPE',
+        message:
+          `Only ${SERVICES_CATEGORY_TYPES.join(' / ')} can be selected via this endpoint. ` +
+          `Reject: ${invalid.join(', ')}`,
+        invalidServices: invalid,
+      });
+    }
+    const allowed = services as ServicesCategoryType[];
+    const requiredCourseId = getRequiredCourse(allowed);
 
-    // Wipe any previously-selected service that is no longer in the set so
-    // we don't leave stale eligibility rows the provider can't see in the
-    // UI. Active rows are preserved when their service is re-selected.
+    // Snapshot the previous selection so we can issue audit entries for
+    // both the new rows and the rows that drop out.
     const existing = await this.prisma.providerServiceEligibility.findMany({
-      where: { userId },
+      where: { providerId: userId },
     });
-    const droppedIds = existing
-      .filter((row) => !services.includes(row.serviceType as SelectableService))
-      .map((row) => row.id);
+    const droppedRows = existing.filter(
+      (row) => !allowed.includes(row.serviceType as ServicesCategoryType),
+    );
+
+    const upsertedIds: { id: string; isNew: boolean }[] = [];
 
     await this.prisma.$transaction(async (tx) => {
-      if (droppedIds.length) {
+      if (droppedRows.length) {
         await tx.providerServiceEligibility.deleteMany({
-          where: { id: { in: droppedIds } },
+          where: { id: { in: droppedRows.map((r) => r.id) } },
         });
       }
-      for (const svc of services) {
-        await tx.providerServiceEligibility.upsert({
-          where: { userId_serviceType: { userId, serviceType: svc as ServiceType } },
+
+      for (const svc of allowed) {
+        const policy = policyFor(svc);
+        const existed = existing.find((r) => r.serviceType === svc);
+        const row = await tx.providerServiceEligibility.upsert({
+          where: {
+            providerId_serviceType: {
+              providerId: userId,
+              serviceType: svc as ServiceType,
+            },
+          },
           create: {
-            userId,
+            providerId: userId,
             serviceType: svc as ServiceType,
+            category: policy.category,
+            riskTier: policy.riskTier,
+            trainingRequired: policy.trainingRequired,
             requiredCourseId,
-            trainingRequired: true,
-            status: ProviderServiceStatus.PENDING,
+            status: ProviderEligibilityStatus.PENDING,
           },
           update: {
-            // Re-bind the required course to the latest selection's ceiling.
-            // Don't reset status if a row is already past PENDING — but DO
-            // re-bind the course id, since adding BOARDING bumps the
-            // requirement.
+            // Re-bind to the policy + new course id. Status is preserved
+            // — an APPROVED row stays approved unless the admin rejects
+            // it explicitly. We never silently downgrade.
+            category: policy.category,
+            riskTier: policy.riskTier,
+            trainingRequired: policy.trainingRequired,
             requiredCourseId,
-            trainingRequired: true,
           },
         });
+        upsertedIds.push({ id: row.id, isNew: !existed });
+
+        if (!existed) {
+          await tx.providerServiceEligibilityAuditLog.create({
+            data: {
+              eligibilityId: row.id,
+              actorUserId: userId,
+              action: ProviderEligibilityAuditAction.CREATED,
+              metadata: {
+                serviceType: svc,
+                requiredCourseId,
+                riskTier: policy.riskTier,
+                category: policy.category,
+              },
+            },
+          });
+        }
       }
     });
 
     this.eventEmitter.emit('petfriend.services_selected', {
       userId,
-      services,
+      services: allowed,
       requiredCourseId,
     });
 
     return {
-      selectedServices: services,
+      selectedServices: allowed,
       requiredCourseId,
     };
   }
