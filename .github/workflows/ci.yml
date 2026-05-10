@@ -5,6 +5,13 @@ on:
     branches: [master, main]
   pull_request:
 
+# `prisma validate` and `prisma generate` parse env() entries in the schema
+# eagerly — they read the variable, but they don't connect. A dummy URL keeps
+# them offline-quiet without exposing secrets to the runner.
+env:
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+  DIRECT_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
 jobs:
   gate:
     runs-on: ubuntu-latest
