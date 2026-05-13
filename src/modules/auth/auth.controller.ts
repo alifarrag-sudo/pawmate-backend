@@ -21,6 +21,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
 import { VerifyEmailDto } from './dto/verify-email.dto';
 import { Public } from '../../common/decorators/public.decorator';
+import { SandboxPublic } from '../../common/decorators/sandbox-public.decorator';
 import { SkipTransform } from '../../common/decorators/skip-transform.decorator';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -194,28 +195,48 @@ export class AuthController {
   // ─── OTP route aliases — clients call /auth/send-otp + /auth/verify-otp ───
   // Same JWT-protected handlers as send-phone-verification + verify-phone.
 
+  @SandboxPublic()
   @UseGuards(JwtAuthGuard)
   @Post('send-otp')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Alias for /auth/send-phone-verification' })
   async sendOtp(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('id') userId: string | undefined,
     @Body() body: { phone: string },
   ) {
-    return this.authService.sendPhoneVerificationCode(userId, body.phone);
+    // Sandbox bootstrap-via-phone signup: when SANDBOX_MODE is on and no
+    // JWT was presented, return the fixed sandbox-OTP sentinel instead of
+    // hitting the SMS provider. Mobile auto-fills 123456 and proceeds to
+    // verify-otp, which mints a fresh user via the same sandbox branch.
+    if (!userId && process.env.SANDBOX_MODE === 'true') {
+      return {
+        success: true,
+        sandbox: true,
+        message: 'OTP code is 123456 in sandbox mode',
+        phone: body.phone,
+      };
+    }
+    return this.authService.sendPhoneVerificationCode(userId as string, body.phone);
   }
 
+  @SandboxPublic()
   @UseGuards(JwtAuthGuard)
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Alias for /auth/verify-phone' })
   async verifyOtp(
-    @CurrentUser('id') userId: string,
+    @CurrentUser('id') userId: string | undefined,
     @Body() body: { code: string; phone: string },
   ) {
-    return this.authService.verifyPhone(userId, body.code, body.phone);
+    if (!userId && process.env.SANDBOX_MODE === 'true') {
+      if (body.code === '123456') {
+        return { success: true, sandbox: true, verified: true, phone: body.phone };
+      }
+      return { success: false, sandbox: true, error: 'Sandbox code is 123456' };
+    }
+    return this.authService.verifyPhone(userId as string, body.code, body.phone);
   }
 
   // ─── Authenticated: Role management ────────────────────────────────────────

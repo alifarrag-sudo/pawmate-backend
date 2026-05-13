@@ -6,5 +6,5 @@
 -- client attempts to decrypt. Until backfill: treat (idNumberEnc IS NOT NULL,
 -- idNumberIv IS NULL) as legacy plaintext.
 
-ALTER TABLE "User" RENAME COLUMN "idNumber" TO "idNumberEnc";
-ALTER TABLE "User" ADD COLUMN "idNumberIv" TEXT;
+ALTER TABLE "users" RENAME COLUMN "idNumber" TO "idNumberEnc";
+ALTER TABLE "users" ADD COLUMN "idNumberIv" TEXT;

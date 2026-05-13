@@ -7,6 +7,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { SANDBOX_PUBLIC_KEY } from '../decorators/sandbox-public.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../services/redis.service';
 
@@ -27,6 +28,18 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       context.getClass(),
     ]);
     if (isPublic) return true;
+
+    // @SandboxPublic — sandbox builds skip JWT for marked routes so
+    // friends-and-family flows can bootstrap a session without an
+    // existing token. Production deployments (SANDBOX_MODE unset or
+    // false) ignore the decorator and enforce JWT as usual.
+    const isSandboxPublic = this.reflector.getAllAndOverride<boolean>(
+      SANDBOX_PUBLIC_KEY,
+      [context.getHandler(), context.getClass()],
+    );
+    if (isSandboxPublic && process.env.SANDBOX_MODE === 'true') {
+      return true;
+    }
 
     // Let Passport validate JWT — JwtStrategy.validate sets request.user to
     // the session shape: { id, email, roles, activeRole }.
