@@ -41,6 +41,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { UploadsService } from '../uploads/uploads.service';
 import { CertificateService } from './certificate.service';
 import { CompleteLessonDto } from './lms.dto';
+import { isSandbox, SANDBOX_CONFIG } from '../../common/sandbox/sandbox.config';
 
 const WEB_LINK_TTL_SECONDS = 900; // 15 min — matches CONVENTIONS doc TTL ceiling
 
@@ -122,7 +123,13 @@ export class LmsService {
       include: { progress: true },
     });
 
-    return { course, enrollment };
+    // Mobile uses this URL to render the "Skip course (sandbox)" button
+    // without hardcoding the path on the client.
+    const sandbox = isSandbox()
+      ? { sandboxCompleteUrl: '/lms/sandbox/complete-course' }
+      : {};
+
+    return { course, enrollment, ...sandbox };
   }
 
   // ── Enrollment ─────────────────────────────────────────────────────────────
@@ -424,6 +431,90 @@ export class LmsService {
       url: signed.url,
       expiresAt: signed.expiresAt.toISOString(),
       issuedAt: enrollment.certificateIssuedAt?.toISOString() ?? null,
+    };
+  }
+
+  // ── Sandbox: force-pass a course ──────────────────────────────────────────
+
+  /**
+   * SANDBOX ONLY — force-completes a course for the calling provider
+   * without watching any lessons. Mirrors the side-effects of a real
+   * passing final-lesson submission so the eligibility flip + audit log
+   * stay consistent.
+   *
+   * The controller gates this on isSandbox(); the extra check here is a
+   * defence-in-depth guard so a misconfigured production server can't
+   * accidentally hand out certificates.
+   */
+  async sandboxCompleteCourse(providerId: string, courseId: CourseId) {
+    if (!isSandbox()) {
+      throw new ForbiddenException('Sandbox endpoints are disabled.');
+    }
+
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, isActive: true },
+    });
+    if (!course || !course.isActive) {
+      throw new NotFoundException('Course not found or inactive.');
+    }
+
+    const score = SANDBOX_CONFIG.sandboxScore;
+    const now = new Date();
+
+    const enrollment = await this.prisma.courseEnrollment.upsert({
+      where: { providerId_courseId: { providerId, courseId } },
+      create: {
+        providerId,
+        courseId,
+        status: CourseStatus.PASSED,
+        startedAt: now,
+        completedAt: now,
+        currentLesson: 1,
+        score,
+        attempts: 1,
+        lastAttemptAt: now,
+        certificateKey: `sandbox:${providerId}:${courseId}`,
+        certificateIssuedAt: now,
+      },
+      update: {
+        status: CourseStatus.PASSED,
+        completedAt: now,
+        score,
+        lastAttemptAt: now,
+        certificateKey: `sandbox:${providerId}:${courseId}`,
+        certificateIssuedAt: now,
+      },
+    });
+
+    // Flip every matching eligibility row to trainingPassed. Mirrors the
+    // real handleCoursePassed side-effect.
+    await this.prisma.providerServiceEligibility.updateMany({
+      where: {
+        providerId,
+        requiredCourseId: courseId,
+      },
+      data: {
+        trainingPassed: true,
+        trainingScore: score,
+        trainingCompletedAt: now,
+        certificateKey: `sandbox:${providerId}:${courseId}`,
+      },
+    });
+
+    this.eventEmitter.emit('provider.training_completed', {
+      providerId,
+      courseId,
+      score,
+      sandbox: true,
+    });
+
+    return {
+      passed: true,
+      score,
+      sandbox: true,
+      certificateLabel: SANDBOX_CONFIG.sandboxCertificateLabel,
+      enrollmentId: enrollment.id,
     };
   }
 

@@ -77,4 +77,19 @@ export class PaymentsController {
   paymobWebhook(@Body() payload: any, @Headers('hmac') signature: string) {
     return this.paymentsService.handlePaymobWebhook(payload, signature);
   }
+
+  // ── Sandbox: simulate a successful Paymob payment ────────────────────
+  //
+  // Service layer enforces SANDBOX_MODE=true; this route is a no-op in
+  // production even if the path is publicly known.
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('sandbox/complete')
+  @ApiOperation({
+    summary:
+      'SANDBOX ONLY — flip a booking to PAID without hitting Paymob (returns 403 in production).',
+  })
+  sandboxCompletePayment(@Request() req: any, @Body('bookingId') bookingId: string) {
+    return this.paymentsService.sandboxCompletePayment(req.user?.id, bookingId);
+  }
 }

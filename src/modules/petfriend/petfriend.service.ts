@@ -25,6 +25,7 @@ import {
   SERVICES_CATEGORY_TYPES,
   type ServicesCategoryType,
 } from '../provider-verification/eligibility-policy';
+import { isSandbox } from '../../common/sandbox/sandbox.config';
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -90,11 +91,14 @@ export class PetFriendService {
       throw new ConflictException('PetFriend profile already exists for this account.');
     }
 
+    const sandbox = isSandbox();
+
     const profile = await this.prisma.petFriendProfile.create({
       data: {
         userId,
-        status: PetFriendStatus.PENDING_DOCS,
+        status: sandbox ? PetFriendStatus.APPROVED : PetFriendStatus.PENDING_DOCS,
         appliedAt: new Date(),
+        autoApprovedAt: sandbox ? new Date() : null,
         commissionRate: COMMISSION_DEFAULT,
       },
     });
@@ -105,6 +109,7 @@ export class PetFriendService {
       data: {
         roles: { push: 'PETFRIEND' },
         isPetFriend: true,
+        ...(sandbox ? { idVerified: true } : {}),
       },
     });
 
@@ -113,6 +118,39 @@ export class PetFriendService {
       profileId: profile.id,
       appliedAt: profile.appliedAt,
     });
+
+    if (sandbox) {
+      // Flip every existing eligibility row to APPROVED + trainingPassed.
+      // Most callers hit /apply before /services, so this usually no-ops —
+      // it's the safety net for the reverse order.
+      await this.prisma.providerServiceEligibility.updateMany({
+        where: { providerId: userId },
+        data: {
+          profilePhotoApproved: true,
+          idFrontApproved: true,
+          idBackApproved: true,
+          selfieWithIdApproved: true,
+          pccApproved: true,
+          trainingPassed: true,
+          trainingScore: 95,
+          trainingCompletedAt: new Date(),
+          status: ProviderEligibilityStatus.APPROVED,
+          approvedAt: new Date(),
+        },
+      });
+      this.eventEmitter.emit('provider.approved', {
+        userId,
+        profileId: profile.id,
+        sandbox: true,
+      });
+      return {
+        profileId: profile.id,
+        status: profile.status,
+        applied: true,
+        autoApproved: true,
+        sandbox: true,
+      };
+    }
 
     return { profileId: profile.id, status: profile.status };
   }
@@ -222,6 +260,28 @@ export class PetFriendService {
       }
     });
 
+    // Sandbox: flip every eligibility row we just upserted to APPROVED
+    // with training passed so the provider lists immediately. We do this
+    // outside the inner tx because we want any audit row from the create
+    // path to land first.
+    if (isSandbox()) {
+      await this.prisma.providerServiceEligibility.updateMany({
+        where: { providerId: userId },
+        data: {
+          profilePhotoApproved: true,
+          idFrontApproved: true,
+          idBackApproved: true,
+          selfieWithIdApproved: true,
+          pccApproved: true,
+          trainingPassed: true,
+          trainingScore: 95,
+          trainingCompletedAt: new Date(),
+          status: ProviderEligibilityStatus.APPROVED,
+          approvedAt: new Date(),
+        },
+      });
+    }
+
     this.eventEmitter.emit('petfriend.services_selected', {
       userId,
       services: allowed,
@@ -324,6 +384,21 @@ export class PetFriendService {
       await this.prisma.petFriendProfile.update({
         where: { userId },
         data: { [field]: result.url },
+      });
+    }
+
+    // Sandbox: flip every per-doc approval flag across all eligibility
+    // rows for this provider so the admin queue is skipped entirely.
+    if (isSandbox()) {
+      await this.prisma.providerServiceEligibility.updateMany({
+        where: { providerId: userId },
+        data: {
+          profilePhotoApproved: true,
+          idFrontApproved: true,
+          idBackApproved: true,
+          selfieWithIdApproved: true,
+          pccApproved: true,
+        },
       });
     }
 

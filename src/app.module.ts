@@ -50,6 +50,8 @@ import { MeetGreetModule } from './modules/meet-greet/meet-greet.module';
 import { SupportModule } from './modules/support/support.module';
 import { InvestorModule } from './modules/investor/investor.module';
 import { WebApplicationModule } from './modules/web-application/web-application.module';
+// Sandbox mode — friends-and-family testing harness (SANDBOX_MODE=true)
+import { SandboxModule } from './modules/sandbox/sandbox.module';
 import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
 
 @Module({
@@ -124,6 +126,8 @@ import { RequestIdMiddleware } from './common/middleware/request-id.middleware';
     SupportModule,
     InvestorModule,
     WebApplicationModule,
+    // SANDBOX_MODE feature-flag harness
+    SandboxModule,
   ],
   providers: [
     // Global rate-limit guard — applies ThrottlerModule config to every route

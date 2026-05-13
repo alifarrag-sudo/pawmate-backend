@@ -89,4 +89,25 @@ export class LmsController {
   webLink(@Request() req: any, @Param('courseId') courseId: string) {
     return this.lms.buildWebLink(req.user.id, parseCourseId(courseId));
   }
+
+  // ─── Sandbox: instant pass ────────────────────────────────────────────────
+  //
+  // Force-completes any course for the caller. Returns 403 from the service
+  // layer when SANDBOX_MODE is not enabled, so this route is a no-op in
+  // production even if the path is publicly known.
+
+  @Post('sandbox/complete-course')
+  @ApiOperation({
+    summary:
+      'SANDBOX ONLY — instantly pass a course (returns 403 in production).',
+  })
+  sandboxCompleteCourse(
+    @Request() req: any,
+    @Body() body: { courseId: string },
+  ) {
+    if (!body?.courseId) {
+      throw new BadRequestException('courseId is required.');
+    }
+    return this.lms.sandboxCompleteCourse(req.user.id, parseCourseId(body.courseId));
+  }
 }

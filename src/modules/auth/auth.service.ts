@@ -20,6 +20,7 @@ import { generateOTP, generateSecureToken, hashValue } from '../../common/utils/
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { SocialLoginDto } from './dto/social-login.dto';
+import { isSandbox, SANDBOX_CONFIG } from '../../common/sandbox/sandbox.config';
 
 const SALT_ROUNDS = 12;
 const EMAIL_CODE_TTL = 600;       // 10 minutes
@@ -575,6 +576,17 @@ export class AuthService {
   // ─── Phone Verification (SMS) ─────────────────────────────────────────────
 
   async sendPhoneVerificationCode(userId: string, phone: string) {
+    // Sandbox mode: stash the fixed code, skip Twilio entirely. Surface
+    // sandbox:true so the mobile UI can render the auto-fill hint.
+    if (isSandbox()) {
+      await this.redis.setex(`sms:${userId}`, 300, hashValue(SANDBOX_CONFIG.otpCode));
+      return {
+        message: 'SMS code sent (sandbox mode).',
+        sandbox: true,
+        devCode: SANDBOX_CONFIG.otpCode,
+      };
+    }
+
     const rateLimitKey = `sms:ratelimit:${phone}`;
     const count = await this.redis.incr(rateLimitKey);
     if (count === 1) await this.redis.expire(rateLimitKey, OTP_RATE_LIMIT_SECONDS);
@@ -597,6 +609,18 @@ export class AuthService {
   }
 
   async verifyPhone(userId: string, code: string, phone: string) {
+    // Sandbox short-circuit: accept the fixed code without touching Redis.
+    // We still flip phoneVerified so downstream flows behave identically
+    // to a real verification.
+    if (isSandbox() && code === SANDBOX_CONFIG.otpCode) {
+      await this.redis.del(`sms:${userId}`);
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { phone, phoneVerified: true },
+      });
+      return { message: 'Phone verified (sandbox).', sandbox: true };
+    }
+
     const storedHash = await this.redis.get(`sms:${userId}`);
     if (!storedHash) {
       throw new BadRequestException({ error: 'CODE_EXPIRED', message: 'Code expired.' });

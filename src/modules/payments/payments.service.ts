@@ -12,6 +12,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PaymobService } from './paymob.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isSandbox } from '../../common/sandbox/sandbox.config';
 
 const TEST_PAYMENT_METHODS = ['test', 'card_test', 'mock'];
 
@@ -314,6 +315,7 @@ export class PaymentsService {
     amount: number;
     currency: 'EGP';
     isMock?: boolean;
+    isSandbox?: boolean;
   }> {
     const booking = await this.prisma.booking.findUnique({
       where: { id: bookingId },
@@ -338,6 +340,23 @@ export class PaymentsService {
     const amountEgp = Math.round(Number(booking.totalPrice));
     const amountCents = amountEgp * 100;
     const apiKey = this.config.get<string>('PAYMOB_API_KEY');
+
+    // ── Sandbox mode — never hit Paymob, mobile renders simulator UI ─────
+    if (isSandbox()) {
+      const intentId = `sandbox_${booking.id}_${Date.now()}`;
+      await this.prisma.booking.update({
+        where: { id: booking.id },
+        data: { paymobIntentId: intentId },
+      });
+      return {
+        intentId,
+        paymentToken: 'sandbox_token',
+        iframeUrl: null,
+        amount: amountEgp,
+        currency: 'EGP',
+        isSandbox: true,
+      };
+    }
 
     // ── Mock mode (no Paymob credentials) ────────────────────────────────
     if (!apiKey) {
@@ -450,6 +469,68 @@ export class PaymentsService {
       amount: Math.round(Number(booking.totalPrice)),
       paidAt: booking.paidAt ? booking.paidAt.toISOString() : null,
     };
+  }
+
+  // ============================================================
+  // SANDBOX: simulate a successful payment
+  // ============================================================
+
+  /**
+   * SANDBOX ONLY — flips a booking to PAID without touching Paymob.
+   * Mirrors the side-effects of the webhook success path (paidAt,
+   * paymentStatus, payment_succeeded event) so downstream listeners
+   * react identically.
+   *
+   * The controller guards on isSandbox(); the extra check here is a
+   * defence-in-depth so a misconfigured production server can't
+   * accidentally settle real bookings to PAID.
+   */
+  async sandboxCompletePayment(
+    userId: string,
+    bookingId: string,
+  ): Promise<{ success: boolean; bookingId: string; sandbox: true }> {
+    if (!isSandbox()) {
+      throw new ForbiddenException('Sandbox endpoints are disabled.');
+    }
+
+    const booking = await this.prisma.booking.findUnique({
+      where: { id: bookingId },
+      select: { id: true, parentId: true, totalPrice: true, paymentStatus: true },
+    });
+    if (!booking) {
+      throw new NotFoundException({ error: 'BOOKING_NOT_FOUND', message: 'Booking not found.' });
+    }
+    if (booking.parentId !== userId) {
+      throw new ForbiddenException({
+        error: 'NOT_BOOKING_OWNER',
+        message: 'You do not own this booking.',
+      });
+    }
+
+    const paidAt = new Date();
+    const transactionId = `sandbox_tx_${bookingId}_${paidAt.getTime()}`;
+
+    await this.prisma.booking.update({
+      where: { id: bookingId },
+      data: {
+        paymentStatus: 'captured',
+        paymentReference: transactionId,
+        paymentAuthorizedAt: paidAt,
+        paymentCapturedAt: paidAt,
+        paidAt,
+      },
+    });
+
+    this.eventEmitter.emit('booking.payment_succeeded', {
+      bookingId,
+      parentId: booking.parentId,
+      transactionId,
+      amount: Number(booking.totalPrice),
+      paidAt: paidAt.toISOString(),
+      sandbox: true,
+    });
+
+    return { success: true, bookingId, sandbox: true };
   }
 
   // ============================================================
